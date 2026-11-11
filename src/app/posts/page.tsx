@@ -38,7 +38,7 @@ export default async function PostsPage({
         <Panel>
           <ul className="divide-y divide-border">
             {posts.map((post) => (
-              <li key={post.id} className="flex gap-3 px-4 py-3">
+              <li key={post.id} className="relative flex gap-3 px-4 py-3 transition-colors hover:bg-hover">
                 <div className="size-12 shrink-0 overflow-hidden rounded-md border border-border bg-hover">
                   {post.firstAssetId ? (
                     <img src={thumbUrl(post.firstAssetId)} alt="" className="size-full object-cover" />
@@ -59,10 +59,13 @@ export default async function PostsPage({
                       {post.mediaCount > 1 ? ` · ${post.mediaCount} files` : ""}
                     </span>
                   </div>
-                  <p className="mt-1 line-clamp-2 text-base">{post.caption || <span className="text-muted">No caption</span>}</p>
+                  <Link href={`/posts/${post.id}`} className="mt-1 line-clamp-2 text-base after:absolute after:inset-0">
+                    {post.caption || <span className="text-muted">No caption</span>}
+                  </Link>
                   <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
                     {post.deliveries.map((delivery) => (
                       <li key={delivery.id}>
+                        {delivery.status === "published" ? "✓ " : delivery.status === "failed" ? "✕ " : ""}
                         {delivery.channelName}: {DELIVERY_STATUS_LABEL[delivery.status]}
                       </li>
                     ))}

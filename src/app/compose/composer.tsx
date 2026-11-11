@@ -46,13 +46,24 @@ function toDraftMedia(asset: ClientAsset): DraftMedia {
   };
 }
 
-export function Composer({ brands, library: initialLibrary }: { brands: ComposerBrand[]; library: ClientAsset[] }) {
+export function Composer({
+  brands,
+  library: initialLibrary,
+  initial,
+}: {
+  brands: ComposerBrand[];
+  library: ClientAsset[];
+  /** Set when duplicating a Post. */
+  initial?: { caption: string; media: ClientAsset[]; brandId: string };
+}) {
   const router = useRouter();
-  const [brandId, setBrandId] = useState(brands.find((brand) => brand.channels.length > 0)?.id ?? brands[0].id);
+  const [brandId, setBrandId] = useState(
+    initial?.brandId ?? brands.find((brand) => brand.channels.length > 0)?.id ?? brands[0].id,
+  );
   const [library, setLibrary] = useState(initialLibrary);
-  const [media, setMedia] = useState<ClientAsset[]>([]);
+  const [media, setMedia] = useState<ClientAsset[]>(initial?.media ?? []);
   const [showLibrary, setShowLibrary] = useState(false);
-  const [caption, setCaption] = useState("");
+  const [caption, setCaption] = useState(initial?.caption ?? "");
   const [picked, setPicked] = useState<string[]>([]);
   const [overrides, setOverrides] = useState<Record<string, string | null>>({});
   const [crops, setCrops] = useState<Record<string, Record<string, CropRect>>>({});

@@ -4,6 +4,12 @@ import { config } from "dotenv";
 // Values already in the environment win, so tests can point DATABASE_URL at the test database.
 config({ path: ".env.local", quiet: true });
 
+// The fake network's posts are shared between the worker and the web server through a file
+// (tests keep them in memory instead).
+if (process.env.ENABLE_FAKE_CONNECTOR === "1" && !process.env.VITEST && !process.env.FAKE_NETWORK_FILE) {
+  process.env.FAKE_NETWORK_FILE = `${process.env.DATA_DIR ?? "data"}/fake-network.json`;
+}
+
 export function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {

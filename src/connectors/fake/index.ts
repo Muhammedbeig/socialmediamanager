@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import {
   type Capabilities,
   type Connector,
@@ -12,8 +14,53 @@ import {
 
 type FakePost = { id: string; channelExternalId: string; caption: string; mediaCount: number };
 
+/**
+ * The fake network's posts. In tests they live in memory. When the app runs, the worker and the
+ * web server are separate processes, so FAKE_NETWORK_FILE keeps them in one shared JSON file.
+ */
+class FakePosts {
+  private memory = new Map<string, FakePost>();
+
+  private read(): Map<string, FakePost> {
+    const file = process.env.FAKE_NETWORK_FILE;
+    if (!file || !existsSync(file)) return file ? new Map() : this.memory;
+    return new Map(Object.entries(JSON.parse(readFileSync(file, "utf8")) as Record<string, FakePost>));
+  }
+
+  private write(posts: Map<string, FakePost>) {
+    const file = process.env.FAKE_NETWORK_FILE;
+    if (!file) return;
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(Object.fromEntries(posts), null, 2));
+  }
+
+  get size() {
+    return this.read().size;
+  }
+  get(id: string) {
+    return this.read().get(id);
+  }
+  values() {
+    return this.read().values();
+  }
+  set(id: string, post: FakePost) {
+    const posts = this.read();
+    posts.set(id, post);
+    this.write(posts);
+  }
+  delete(id: string) {
+    const posts = this.read();
+    posts.delete(id);
+    this.write(posts);
+  }
+  clear() {
+    this.memory.clear();
+    this.write(new Map());
+  }
+}
+
 class FakeNetwork {
-  posts = new Map<string, FakePost>();
+  posts = new FakePosts();
   private failures: { on: "publish" | "edit" | "remove"; kind: ConnectorErrorKind; message: string }[] = [];
   /** The Channels a fake login grants. */
   loginTargets = [{ externalId: "fake-1", displayName: "Fake profile", handle: "fake" }];
@@ -112,7 +159,7 @@ export const fakeConnector: Connector = {
     fakeNetwork.takeFailure("edit");
     const post = fakeNetwork.posts.get(live.externalPostId);
     if (!post) throw new ConnectorError("rejected", "The post no longer exists on the fake network.");
-    post.caption = text;
+    fakeNetwork.posts.set(post.id, { ...post, caption: text });
   },
 
   async remove(_access, live) {
