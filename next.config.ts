@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  // Native or Node-only packages that must not be bundled.
+  serverExternalPackages: ["@napi-rs/keyring", "pg-boss", "playwright"],
   turbopack: {
     rules: {
       "*.css": {

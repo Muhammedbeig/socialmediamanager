@@ -109,8 +109,10 @@ Delivery starts and deletes it once the Delivery is live.
 
 ## 5. HTTPS on localhost
 
-Meta only redirects to HTTPS addresses. The first time the app starts, it creates a local
-certificate and Windows asks once whether to trust it. Choose Yes.
+Meta only redirects to HTTPS addresses, so `.env.example` sets `APP_URL=https://localhost:3000`.
+With that in `.env.local`, `npm run dev` serves HTTPS. The first time, Next.js downloads the
+`mkcert` tool, creates a certificate for localhost, and Windows asks once whether to trust it.
+Choose Yes. Without it, the browser shows a warning on every visit.
 
 ## 6. Token encryption key
 

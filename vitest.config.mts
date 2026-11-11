@@ -7,6 +7,7 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts"],
+    setupFiles: ["tests/setup.ts"],
     // Database tests share one test database, so test files run one after another.
     fileParallelism: false,
   },

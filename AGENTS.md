@@ -5,6 +5,7 @@ An internal marketing tool: compose a Post once, publish it to every selected Ch
 - **Domain language** lives in [GLOSSARY.md](GLOSSARY.md). Use its terms in code, UI copy and commits (Channel, Delivery, Brand, Replace...), and add a term there when one is settled.
 - **Product spec** is the PRD: https://claude.ai/artifact/SujFXZLdhzEFNygZ8mVShx. Read it for scope, screens, per-network limits and open questions.
 - **Decisions** with their reasons go in `docs/adr/`.
+- **Design** follows [DESIGN.md](DESIGN.md): the owner's Aeolyzer application look (parrot accent, Inter, flat panels). Read it before building or changing a screen.
 
 ## Architecture
 
