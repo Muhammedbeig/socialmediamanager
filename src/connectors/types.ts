@@ -27,7 +27,12 @@ export type VideoRules = {
 
 export type Capabilities = {
   formats: PostFormat[];
-  caption: { maxChars: number; maxHashtags?: number };
+  caption: {
+    maxChars: number;
+    maxHashtags?: number;
+    /** Threads counts an emoji as its UTF-8 byte length (🎉 is 4), not as one character. */
+    emojiAsBytes?: boolean;
+  };
   carousel?: { min: number; max: number };
   image?: ImageRules;
   video?: VideoRules;

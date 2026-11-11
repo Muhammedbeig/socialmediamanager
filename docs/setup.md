@@ -49,42 +49,49 @@ ffmpeg -version
 One app in development mode covers all three networks. In development mode it works only for
 people with a role on the app, which is all an internal tool needs. No app review.
 
+In the redirect URLs below, `APP_URL` is the value in your `.env.local`, normally
+`http://localhost:3000`.
+
 1. Go to <https://developers.facebook.com/apps>, log in with the Facebook account that manages
    your Pages, and create an app. Add these use cases:
    - **Manage everything on your Page** (Facebook Pages)
-   - **Manage messaging & content on Instagram** (Instagram API with Instagram Login)
+   - **Manage messaging & content on Instagram**, choosing **API setup with Facebook login**
    - **Access the Threads API**
-2. Leave the app in **Development** mode.
+2. Leave the app in **Development** mode. While it is, Facebook accepts `http://localhost`
+   redirect addresses.
 
 ### Facebook Pages
 
 1. In the Pages use case, add the permissions `pages_show_list`, `pages_read_engagement`,
    `pages_manage_posts` and `pages_manage_engagement`.
-2. Under **Facebook Login for Business > Settings**, add this Valid OAuth Redirect URI:
-   `https://localhost:3000/api/channels/callback/facebook`
+2. Under **Facebook Login for Business > Settings > Valid OAuth Redirect URIs**, add both:
+   `APP_URL/api/channels/callback/facebook` and `APP_URL/api/channels/callback/instagram`
 3. From **App settings > Basic**, copy the App ID and App secret into `FACEBOOK_APP_ID` and
    `FACEBOOK_APP_SECRET`.
 
 ### Instagram
 
-Each Instagram profile must be a Business or Creator account (Instagram app: Settings >
-Account type and tools > Switch to professional account).
+Instagram connects through Facebook Login, because only that login lets an app remove Instagram
+posts (decision record 0005). Each Instagram profile must be:
 
-1. In the Instagram use case, add the permissions `instagram_business_basic` and
-   `instagram_business_content_publish`.
-2. Under **API setup with Instagram login > Business login settings**, add the OAuth redirect URI:
-   `https://localhost:3000/api/channels/callback/instagram`
-3. Copy the **Instagram app ID** and **Instagram app secret** from that page into
-   `INSTAGRAM_APP_ID` and `INSTAGRAM_APP_SECRET`. They differ from the Facebook ones.
-4. Add each Instagram profile under **App roles > Roles > Add People > Instagram Tester**. Then
-   accept the invite as that profile: Instagram > Settings > Apps and websites > Tester invites.
+- a Business or Creator account (Instagram app: Settings > Account type and tools > Switch to
+  professional account), and
+- linked to one of your Facebook Pages (the Page's settings > Linked accounts > Instagram).
+
+In the Instagram use case (API setup with Facebook login), add the permissions `instagram_basic`,
+`instagram_content_publish` and `instagram_manage_contents`. Nothing else: it uses the Facebook
+app ID and secret, and your role on the app is enough, so no tester invites are needed.
+
+When you click **Connect Instagram**, Facebook asks which Pages to share. Every shared Page with
+a linked Instagram profile becomes one Instagram Channel.
 
 ### Threads
 
 1. In the Threads use case, add the permissions `threads_basic`, `threads_content_publish` and
    `threads_delete`.
 2. In the Threads use case settings, add the redirect callback URL:
-   `https://localhost:3000/api/channels/callback/threads`
+   `APP_URL/api/channels/callback/threads`
+   If Threads refuses an `http://` address, see step 5.
 3. Copy the **Threads app ID** and **Threads app secret** into `THREADS_APP_ID` and
    `THREADS_APP_SECRET`. They differ from the Facebook ones.
 4. Add each Threads profile under **App roles > Roles > Add People > Threads Tester**. Then accept
@@ -107,12 +114,15 @@ Delivery starts and deletes it once the Delivery is live.
    `R2_SECRET_ACCESS_KEY`.
 6. Copy your Account ID (shown on the R2 overview page) into `R2_ACCOUNT_ID`.
 
-## 5. HTTPS on localhost
+## 5. HTTPS on localhost (only if a network refuses http)
 
-Meta only redirects to HTTPS addresses, so `.env.example` sets `APP_URL=https://localhost:3000`.
-With that in `.env.local`, `npm run dev` serves HTTPS. The first time, Next.js downloads the
-`mkcert` tool, creates a certificate for localhost, and Windows asks once whether to trust it.
-Choose Yes. Without it, the browser shows a warning on every visit.
+Facebook accepts `http://localhost` redirects for apps in development mode. If Threads refuses
+one, switch to HTTPS:
+
+1. Set `APP_URL=https://localhost:3000` in `.env.local`, and use `https://` in the redirect URLs above.
+2. Run `npm run dev` once. Next.js downloads the `mkcert` tool, creates a certificate for
+   localhost in the `certificates` folder, and Windows asks once whether to trust it. Choose Yes.
+3. The background service (step 7) then serves HTTPS with the same certificate.
 
 ## 6. Token encryption key
 

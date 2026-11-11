@@ -1,6 +1,7 @@
 # 3. Instagram Channels connect through Instagram Login
 
-Date: 2026-11-11
+Date: 2026-11-11. **Superseded by [0005](0005-instagram-through-facebook-login.md)**: only Facebook
+Login lets an app delete Instagram posts.
 
 ## Decision
 

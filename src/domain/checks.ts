@@ -36,6 +36,20 @@ export function countChars(text: string): number {
   return [...text].length;
 }
 
+const EMOJI_PART = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}‍️⃣]/u;
+
+/** A caption's length the way this network counts it. */
+export function captionLength(text: string, rules: Capabilities["caption"]): number {
+  if (!rules.emojiAsBytes) return countChars(text);
+  // Runs in the browser too, so TextEncoder rather than Buffer.
+  const encoder = new TextEncoder();
+  let length = 0;
+  for (const char of text) {
+    length += EMOJI_PART.test(char) ? encoder.encode(char).length : 1;
+  }
+  return length;
+}
+
 /** v1 formats: text, one image, an image carousel, or one video. Null for any other mix. */
 export function postFormat(media: readonly Pick<DraftMedia, "kind">[]): PostFormat | null {
   if (media.length === 0) return "text";
@@ -109,7 +123,7 @@ export function checkPost(draft: Draft, capabilities: Capabilities, network: str
     return issues;
   }
 
-  const length = countChars(draft.caption);
+  const length = captionLength(draft.caption, capabilities.caption);
   if (format === "text" && draft.caption.trim().length === 0) {
     issues.push({ kind: "block", message: "Write a caption or add media." });
   }

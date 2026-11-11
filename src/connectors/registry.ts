@@ -1,12 +1,12 @@
 import type { Network } from "@/db/schema";
-import { facebookAuth } from "./facebook/auth";
+import { facebookConnector } from "./facebook";
 import { fakeConnector } from "./fake";
-import { instagramAuth } from "./instagram/auth";
-import { threadsAuth } from "./threads/auth";
+import { instagramConnector } from "./instagram";
+import { threadsConnector } from "./threads";
 import type { Connector, ConnectorAuth } from "./types";
 
-// What the Channels screen needs to know about each network that can be connected.
-// Publishing for the real networks is added with their Connectors.
+// What the Channels screen needs to know about each network that can be connected,
+// and which Connector publishes to it.
 
 export type NetworkEntry = {
   network: Network;
@@ -26,23 +26,24 @@ const ENTRIES: NetworkEntry[] = [
     name: "Facebook",
     channelNoun: "Page",
     kind: "api",
-    auth: facebookAuth,
+    auth: facebookConnector.auth,
     requiredEnv: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
   },
   {
+    // Instagram connects through Facebook Login (docs/adr/0005).
     network: "instagram",
     name: "Instagram",
     channelNoun: "profile",
     kind: "api",
-    auth: instagramAuth,
-    requiredEnv: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"],
+    auth: instagramConnector.auth,
+    requiredEnv: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
   },
   {
     network: "threads",
     name: "Threads",
     channelNoun: "profile",
     kind: "api",
-    auth: threadsAuth,
+    auth: threadsConnector.auth,
     requiredEnv: ["THREADS_APP_ID", "THREADS_APP_SECRET"],
   },
 ];
@@ -54,6 +55,12 @@ const FAKE_ENTRY: NetworkEntry = {
   kind: "api",
   auth: fakeConnector.auth,
   requiredEnv: [],
+};
+
+const CONNECTORS: Partial<Record<Network, Connector>> = {
+  facebook: facebookConnector,
+  instagram: instagramConnector,
+  threads: threadsConnector,
 };
 
 function fakeEnabled(): boolean {
@@ -75,11 +82,11 @@ export function networkName(network: Network): string {
 
 /**
  * The Connector that publishes to a network, or undefined while it is not built.
- * The composer reads its capabilities; the Delivery worker calls publish, edit and remove.
+ * The composer reads its capabilities; the publisher calls publish; Post detail calls edit and remove.
  */
 export function getConnector(network: Network): Connector | undefined {
   if (network === "fake") return fakeEnabled() ? fakeConnector : undefined;
-  return undefined;
+  return CONNECTORS[network];
 }
 
 export function missingEnv(entry: NetworkEntry): string[] {

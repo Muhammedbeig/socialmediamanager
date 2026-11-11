@@ -1,35 +1,30 @@
-import { metaRequest } from "../meta/http";
-import { createProfileLoginAuth } from "../meta/profile-login";
+import { createFacebookLogin } from "../facebook/auth";
 
-// Instagram API with Instagram Login (see docs/adr/0003).
-// Checked against Meta's "Business Login for Instagram" docs on 2026-11-11.
+// Instagram API with Facebook Login (see docs/adr/0005). Each Instagram professional profile
+// linked to a granted Facebook Page becomes one Channel, using that Page's token.
+// Checked against Meta's content publishing and Instagram Media docs on 2026-11-11: only this
+// login lets an app delete Instagram posts.
 
-export const INSTAGRAM_GRAPH = "https://graph.instagram.com/v27.0";
-
-type InstagramProfile = { user_id?: string; id?: string; username?: string; name?: string };
-
-export const instagramAuth = createProfileLoginAuth({
-  appIdEnv: "INSTAGRAM_APP_ID",
-  appSecretEnv: "INSTAGRAM_APP_SECRET",
-  authorizeUrl: "https://www.instagram.com/oauth/authorize",
-  codeTokenUrl: "https://api.instagram.com/oauth/access_token",
-  exchangeUrl: "https://graph.instagram.com/access_token",
-  exchangeGrant: "ig_exchange_token",
-  refreshUrl: "https://graph.instagram.com/refresh_access_token",
-  refreshGrant: "ig_refresh_token",
-  scopes: ["instagram_business_basic", "instagram_business_content_publish"],
-  async loadProfile(accessToken, userId) {
-    const answer = await metaRequest<InstagramProfile | { data: InstagramProfile[] }>(
-      `${INSTAGRAM_GRAPH}/me?fields=user_id,username,name`,
-      { bearer: accessToken },
-    );
-    const profile = "data" in answer ? answer.data[0] : answer;
-    const username = profile.username ?? null;
-    return {
-      // `user_id` is the professional account ID that the publishing endpoints take.
-      externalId: String(profile.user_id ?? profile.id ?? userId),
-      displayName: profile.name || username || "Instagram profile",
-      handle: username,
-    };
+export const instagramAuth = createFacebookLogin({
+  scopes: [
+    "instagram_basic",
+    "instagram_content_publish",
+    "instagram_manage_contents",
+    "pages_show_list",
+    "pages_read_engagement",
+  ],
+  pageFields: "id,name,access_token,instagram_business_account{id,username,name}",
+  toTargets: (page) => {
+    const profile = page.instagram_business_account;
+    if (!profile) return [];
+    return [
+      {
+        externalId: profile.id,
+        displayName: profile.name || profile.username || `Instagram of ${page.name}`,
+        handle: profile.username ?? null,
+        accessToken: page.access_token,
+        expiresAt: null,
+      },
+    ];
   },
 });

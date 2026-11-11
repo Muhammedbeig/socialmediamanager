@@ -17,6 +17,9 @@ class FakeNetwork {
   private failures: { on: "publish" | "edit" | "remove"; kind: ConnectorErrorKind; message: string }[] = [];
   /** The Channels a fake login grants. */
   loginTargets = [{ externalId: "fake-1", displayName: "Fake profile", handle: "fake" }];
+  /** Tokens handed out by refresh, and whether refresh should fail. */
+  refreshCount = 0;
+  refreshFails = false;
 
   /** Make the next call of this type fail. Queue several for several failures in a row. */
   failNext(on: "publish" | "edit" | "remove", kind: ConnectorErrorKind, message = "Scripted failure") {
@@ -34,6 +37,8 @@ class FakeNetwork {
     this.posts.clear();
     this.failures = [];
     this.loginTargets = [{ externalId: "fake-1", displayName: "Fake profile", handle: "fake" }];
+    this.refreshCount = 0;
+    this.refreshFails = false;
   }
 }
 
@@ -80,6 +85,14 @@ export const fakeConnector: Connector = {
         accessToken: `fake-token-${target.externalId}`,
         expiresAt: null,
       }));
+    },
+    async refresh() {
+      if (fakeNetwork.refreshFails) throw new ConnectorError("auth", "The fake login was revoked.");
+      fakeNetwork.refreshCount++;
+      return {
+        accessToken: `fake-refreshed-${fakeNetwork.refreshCount}`,
+        expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60_000),
+      };
     },
   },
 

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import type { Capabilities } from "@/connectors/types";
 import type { CropRect, Network } from "@/db/schema";
-import { type DraftMedia, type Issue, canPublish, checkPost, countChars } from "@/domain/checks";
+import { type DraftMedia, type Issue, canPublish, captionLength, checkPost, countChars } from "@/domain/checks";
 import { type ClientAsset, formatBytes, formatDuration, thumbUrl } from "@/media/client-asset";
 import { MediaDropzone } from "@/ui/media-dropzone";
 import { Notice, Panel, PanelHeading, buttonClass, inputClass, labelClass, textareaClass } from "@/ui/primitives";
@@ -81,13 +81,15 @@ export function Composer({ brands, library: initialLibrary }: { brands: Composer
   }, [brand, caption, overrides, draftMedia, crops]);
 
   const pickedChannels = brand.channels.filter((channel) => picked.includes(channel.id));
-  const strictest = pickedChannels
-    .filter((channel) => channel.capabilities && overrides[channel.id] == null)
-    .reduce<number | null>((min, channel) => {
-      const limit = channel.capabilities!.caption.maxChars;
-      return min === null ? limit : Math.min(min, limit);
-    }, null);
-  const captionLength = countChars(caption);
+  // The main counter follows the picked Channel (using the main caption) with the least room left.
+  const tightest =
+    pickedChannels
+      .filter((channel) => channel.capabilities && overrides[channel.id] == null)
+      .map((channel) => ({
+        limit: channel.capabilities!.caption.maxChars,
+        length: captionLength(caption, channel.capabilities!.caption),
+      }))
+      .sort((a, b) => a.limit - a.length - (b.limit - b.length))[0] ?? null;
   const scheduledDate = when === "later" ? new Date(scheduleValue) : null;
   const scheduleProblem =
     when === "later" && (!scheduleValue || Number.isNaN(scheduledDate!.getTime()))
@@ -252,9 +254,11 @@ export function Composer({ brands, library: initialLibrary }: { brands: Composer
           <span className="flex items-center justify-between">
             Caption
             <span
-              className={`text-xs tabular-nums ${strictest !== null && captionLength > strictest ? "text-danger" : "text-muted"}`}
+              className={`text-xs tabular-nums ${tightest && tightest.length > tightest.limit ? "text-danger" : "text-muted"}`}
             >
-              {strictest !== null ? `${captionLength.toLocaleString("en")} / ${strictest.toLocaleString("en")}` : captionLength}
+              {tightest
+                ? `${tightest.length.toLocaleString("en")} / ${tightest.limit.toLocaleString("en")}`
+                : countChars(caption).toLocaleString("en")}
             </span>
           </span>
           <textarea
@@ -286,7 +290,9 @@ export function Composer({ brands, library: initialLibrary }: { brands: Composer
               const issues = checks[channel.id] ?? [];
               const override = overrides[channel.id];
               const limit = channel.capabilities?.caption.maxChars;
-              const ownLength = countChars(override ?? caption);
+              const ownLength = channel.capabilities
+                ? captionLength(override ?? caption, channel.capabilities.caption)
+                : countChars(override ?? caption);
               return (
                 <li key={channel.id} className={isPicked ? "bg-selected-soft" : undefined}>
                   <label

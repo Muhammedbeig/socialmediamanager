@@ -20,9 +20,7 @@ export const threadsAuth = createProfileLoginAuth({
   // threads_delete is required for Removal.
   scopes: ["threads_basic", "threads_content_publish", "threads_delete"],
   async loadProfile(accessToken, userId) {
-    const profile = await metaRequest<ThreadsProfile>(`${THREADS_GRAPH}/me?fields=id,username,name`, {
-      bearer: accessToken,
-    });
+    const profile = await metaRequest<ThreadsProfile>(`${THREADS_GRAPH}/me?fields=id,username,name`, { accessToken });
     const username = profile.username ?? null;
     return {
       externalId: String(profile.id ?? userId),

@@ -13,7 +13,7 @@ let answers: { status?: number; body: unknown }[];
 beforeEach(() => {
   calls = [];
   answers = [];
-  for (const name of ["FACEBOOK", "INSTAGRAM", "THREADS"]) {
+  for (const name of ["FACEBOOK", "THREADS"]) {
     process.env[`${name}_APP_ID`] = `${name.toLowerCase()}-app-id`;
     process.env[`${name}_APP_SECRET`] = `${name.toLowerCase()}-app-secret`;
   }
@@ -67,45 +67,43 @@ describe("Facebook login", () => {
     expect(calls[1].url.searchParams.get("grant_type")).toBe("fb_exchange_token");
     expect(calls[1].url.searchParams.get("fb_exchange_token")).toBe("short-user");
     expect(calls[2].url.pathname).toBe("/v27.0/me/accounts");
-    expect(calls[2].bearer).toBe("long-user");
+    expect(calls[2].url.searchParams.get("access_token")).toBe("long-user");
   });
 });
 
-describe("Instagram login", () => {
-  it("connects one profile with a long-lived token", async () => {
-    answers.push(
-      { body: { data: [{ access_token: "short-ig", user_id: "999", permissions: "instagram_business_basic" }] } },
-      { body: { access_token: "long-ig", token_type: "bearer", expires_in: 5_183_944 } },
-      { body: { user_id: "17840000000000000", username: "acme", name: "Acme" } },
+describe("Instagram login (through Facebook Login)", () => {
+  it("asks for the Instagram publishing and delete permissions", () => {
+    const url = new URL(instagramAuth.authorizeUrl({ redirectUri: REDIRECT, state: "abc" }));
+    expect(url.origin + url.pathname).toBe("https://www.facebook.com/v27.0/dialog/oauth");
+    const scopes = url.searchParams.get("scope")!.split(",");
+    expect(scopes).toEqual(
+      expect.arrayContaining(["instagram_basic", "instagram_content_publish", "instagram_manage_contents"]),
     );
-
-    const before = Date.now();
-    const [target] = await instagramAuth.exchangeCode({ code: "ig-code#_", redirectUri: REDIRECT });
-
-    expect(target).toMatchObject({
-      externalId: "17840000000000000",
-      displayName: "Acme",
-      handle: "acme",
-      accessToken: "long-ig",
-    });
-    const days = (target.expiresAt!.getTime() - before) / 86_400_000;
-    expect(days).toBeGreaterThan(59);
-    expect(days).toBeLessThan(61);
-
-    expect(calls[0].method).toBe("POST");
-    expect(calls[0].url.href).toBe("https://api.instagram.com/oauth/access_token");
-    expect(calls[0].body?.get("code")).toBe("ig-code");
-    expect(calls[0].body?.get("client_secret")).toBe("instagram-app-secret");
-    expect(calls[1].url.searchParams.get("grant_type")).toBe("ig_exchange_token");
-    expect(calls[2].bearer).toBe("long-ig");
   });
 
-  it("refreshes a long-lived token", async () => {
-    answers.push({ body: { access_token: "fresh-ig", expires_in: 5_183_944 } });
-    const refreshed = await instagramAuth.refresh!("long-ig");
-    expect(refreshed.accessToken).toBe("fresh-ig");
-    expect(calls[0].url.pathname).toBe("/refresh_access_token");
-    expect(calls[0].url.searchParams.get("grant_type")).toBe("ig_refresh_token");
+  it("makes one Channel per Instagram profile linked to a granted Page, with that Page's token", async () => {
+    answers.push(
+      { body: { access_token: "short-user" } },
+      { body: { access_token: "long-user" } },
+      {
+        body: {
+          data: [
+            {
+              id: "111",
+              name: "Acme",
+              access_token: "page-token-111",
+              instagram_business_account: { id: "1784000", username: "acme", name: "Acme Shop" },
+            },
+            { id: "222", name: "No Instagram here", access_token: "page-token-222" },
+          ],
+        },
+      },
+    );
+    const targets = await instagramAuth.exchangeCode({ code: "the-code", redirectUri: REDIRECT });
+    expect(targets).toEqual([
+      { externalId: "1784000", displayName: "Acme Shop", handle: "acme", accessToken: "page-token-111", expiresAt: null },
+    ]);
+    expect(calls[2].url.searchParams.get("fields")).toContain("instagram_business_account");
   });
 });
 
@@ -130,7 +128,17 @@ describe("Threads login", () => {
       accessToken: "long-th",
     });
     expect(calls[0].url.href).toBe("https://graph.threads.com/oauth/access_token");
+    expect(calls[0].body?.get("client_secret")).toBe("threads-app-secret");
     expect(calls[1].url.searchParams.get("grant_type")).toBe("th_exchange_token");
+    expect(calls[2].url.searchParams.get("access_token")).toBe("long-th");
+  });
+
+  it("refreshes a long-lived token", async () => {
+    answers.push({ body: { access_token: "fresh-th", expires_in: 5_183_944 } });
+    const refreshed = await threadsAuth.refresh!("long-th");
+    expect(refreshed.accessToken).toBe("fresh-th");
+    expect(calls[0].url.pathname).toBe("/refresh_access_token");
+    expect(calls[0].url.searchParams.get("grant_type")).toBe("th_refresh_token");
   });
 });
 
