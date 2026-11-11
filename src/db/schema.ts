@@ -192,6 +192,11 @@ export const deliveries = pgTable(
     liveUrl: text("live_url"),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
+    // Set while a worker is talking to the network. Still set long after means the worker died
+    // mid-call, so the outcome is unknown and the Delivery is never sent again automatically.
+    inFlightSince: timestamp("in_flight_since", { withTimezone: true }),
+    // When the next automatic retry is due, while a Publishing Delivery waits for one.
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
     // Connector bookkeeping between attempts, such as an Instagram container ID.
     networkState: jsonb("network_state").$type<Record<string, unknown>>().notNull().default({}),
     removedAt: timestamp("removed_at", { withTimezone: true }),

@@ -136,8 +136,8 @@ export function Composer({ brands, library: initialLibrary }: { brands: Composer
         scheduledFor: scheduledDate ? scheduledDate.toISOString() : null,
       });
       if (result.ok) {
-        const notice = scheduledDate ? "Post scheduled." : "Post saved. It goes out as soon as publishing is switched on.";
-        router.push(`/posts?notice=${encodeURIComponent(notice)}`);
+        const notice = scheduledDate ? "Post scheduled." : "Publishing now.";
+        router.push(`/posts/${result.postId}?notice=${encodeURIComponent(notice)}`);
       } else {
         setError(result.error);
       }
