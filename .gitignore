@@ -34,8 +34,11 @@ yarn-error.log*
 .env*
 !.env.example
 
-# local media files (originals and converted copies)
+# local media files (originals and converted copies), logs, the fake network's posts
 /data/
+
+# local HTTPS certificate made by `next dev --experimental-https`
+/certificates/
 
 # typescript
 *.tsbuildinfo

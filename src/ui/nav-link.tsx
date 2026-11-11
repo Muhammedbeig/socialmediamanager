@@ -19,7 +19,20 @@ const ICONS = {
 
 export type NavIcon = keyof typeof ICONS;
 
-export function NavLink({ href, icon, badge, children }: { href: string; icon: NavIcon; badge?: number; children: React.ReactNode }) {
+export function NavLink({
+  href,
+  icon,
+  badge,
+  badgeLabel,
+  children,
+}: {
+  href: string;
+  icon: NavIcon;
+  badge?: number;
+  /** Read by screen readers instead of the bare number. */
+  badgeLabel?: string;
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
   const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
   return (
@@ -36,7 +49,8 @@ export function NavLink({ href, icon, badge, children }: { href: string; icon: N
       <span className="min-w-0 md:flex-1 md:truncate">{children}</span>
       {badge ? (
         <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-parrot px-1 text-xs font-medium text-parrot-ink tabular-nums">
-          {badge}
+          <span aria-hidden>{badge}</span>
+          <span className="sr-only">{badgeLabel ?? badge}</span>
         </span>
       ) : null}
     </Link>

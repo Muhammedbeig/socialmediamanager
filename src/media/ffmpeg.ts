@@ -2,12 +2,13 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 
 /** Where original media, converted copies and thumbnails live on the laptop. */
+// turbopackIgnore: these paths point at runtime data, not code the build should trace.
 export function dataDir(): string {
-  return path.resolve(process.env.DATA_DIR ?? "data");
+  return path.resolve(/* turbopackIgnore: true */ process.env.DATA_DIR ?? "data");
 }
 
 export function dataPath(relative: string): string {
-  return path.join(dataDir(), relative);
+  return path.join(/* turbopackIgnore: true */ dataDir(), relative);
 }
 
 function run(command: string, args: string[]): Promise<string> {

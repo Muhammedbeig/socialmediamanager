@@ -1,22 +1,37 @@
 import Link from "next/link";
 import { listBrandsWithChannels } from "@/brands/service";
 import { needsReconnect } from "@/channels/connect";
+import { networkName } from "@/connectors/registry";
 import { getDb } from "@/db/client";
-import { Notice, PageHeader, Panel } from "@/ui/primitives";
+import { dashboardData, unreadAlertCount } from "@/notify/queries";
+import { Notice, PageHeader, Panel, PanelHeading, buttonClass } from "@/ui/primitives";
+
+const when = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function loadDashboard(now = new Date()) {
+  const db = getDb();
+  return Promise.all([listBrandsWithChannels(db), dashboardData(db, now), unreadAlertCount(db)]);
+}
 
 export default async function DashboardPage() {
-  const brands = await listBrandsWithChannels(getDb());
+  const [brands, { upcoming, failures }, unread] = await loadDashboard();
   const channels = brands.flatMap((brand) => brand.channels);
   const reconnectCount = channels.filter((channel) => needsReconnect(channel)).length;
 
   const metrics = [
-    { label: "Brands", value: brands.length, href: "/brands" },
+    { label: "Coming up (7 days)", value: upcoming.length, href: "/posts" },
+    { label: "Failed (7 days)", value: failures.length, href: "/posts" },
+    { label: "Unread alerts", value: unread, href: "/alerts" },
     { label: "Channels", value: channels.length, href: "/channels" },
   ];
 
   return (
     <>
-      <PageHeader title="Dashboard" description="Compose a Post once, publish it to every Channel." />
+      <PageHeader title="Dashboard" description="Compose a Post once, publish it to every Channel.">
+        <Link href="/compose" className={buttonClass.primary}>
+          Compose
+        </Link>
+      </PageHeader>
       {reconnectCount > 0 ? (
         <Notice tone="warning">
           {reconnectCount === 1 ? "1 Channel needs" : `${reconnectCount} Channels need`} reconnecting.{" "}
@@ -25,23 +40,75 @@ export default async function DashboardPage() {
           </Link>
         </Notice>
       ) : null}
-      <Panel className="grid divide-x divide-border sm:grid-cols-2">
-        {metrics.map((metric) => (
-          <Link key={metric.label} href={metric.href} className="block p-4 transition-colors hover:bg-hover">
+
+      <Panel className="mb-6 grid grid-cols-2 sm:grid-cols-4">
+        {metrics.map((metric, index) => (
+          <Link
+            key={metric.label}
+            href={metric.href}
+            className={`block p-4 transition-colors hover:bg-hover ${index > 0 ? "border-l border-border" : ""} ${index >= 2 ? "max-sm:border-t" : ""} ${index === 2 ? "max-sm:border-l-0" : ""}`}
+          >
             <p className="text-sm font-medium text-muted">{metric.label}</p>
             <p className="mt-2 text-[28px] leading-8 font-medium tabular-nums">{metric.value}</p>
           </Link>
         ))}
       </Panel>
+
       {brands.length === 0 ? (
-        <p className="mt-5 text-base text-muted">
+        <p className="text-base text-muted">
           Start by{" "}
           <Link href="/brands" className="font-medium text-foreground underline">
             creating a Brand
           </Link>
           , then connect its Channels.
         </p>
-      ) : null}
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Panel>
+            <div className="border-b border-border px-4 py-3">
+              <PanelHeading>Coming up</PanelHeading>
+            </div>
+            {upcoming.length === 0 ? (
+              <p className="px-4 py-3 text-base text-muted">Nothing scheduled for the next 7 days.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {upcoming.map(({ delivery, channelName, network, caption }) => (
+                  <li key={delivery.id}>
+                    <Link href={`/posts/${delivery.postId}`} className="block px-4 py-2.5 transition-colors hover:bg-hover">
+                      <span className="block text-xs text-muted tabular-nums">
+                        {when.format(delivery.scheduledFor)} · {channelName} on {networkName(network)}
+                      </span>
+                      <span className="mt-0.5 block truncate text-base">{delivery.captionOverride ?? caption}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          <Panel>
+            <div className="border-b border-border px-4 py-3">
+              <PanelHeading>Recent failures</PanelHeading>
+            </div>
+            {failures.length === 0 ? (
+              <p className="px-4 py-3 text-base text-muted">No Delivery failed in the last 7 days.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {failures.map(({ delivery, channelName, network }) => (
+                  <li key={delivery.id}>
+                    <Link href={`/posts/${delivery.postId}`} className="block px-4 py-2.5 transition-colors hover:bg-hover">
+                      <span className="block text-sm font-medium">
+                        {channelName} on {networkName(network)}
+                      </span>
+                      <span className="mt-0.5 line-clamp-2 block text-xs text-danger">{delivery.lastError}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </div>
+      )}
     </>
   );
 }

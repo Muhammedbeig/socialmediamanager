@@ -1,6 +1,7 @@
 import { refreshExpiringTokens } from "@/channels/refresh";
 import { createDb } from "@/db/client";
 import { createR2Host, missingR2Settings } from "@/media/r2";
+import { desktopNotifier } from "@/notify/desktop";
 import { runMigrations } from "@/db/migrate";
 import { seedOwner } from "@/db/seed";
 import { requireEnv } from "@/env";
@@ -21,6 +22,7 @@ export async function startWorker(options: WorkerOptions = {}): Promise<{ stop()
   await seedOwner(db);
 
   const mediaHost = options.mediaHost === undefined ? createR2Host() : options.mediaHost;
+  options = { ...options, desktop: options.desktop ?? desktopNotifier() };
   if (!mediaHost) {
     log(`Cloudflare R2 is not set up (missing ${missingR2Settings().join(", ")}). Instagram and Threads media cannot be published until it is.`);
   }

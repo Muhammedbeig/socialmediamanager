@@ -10,7 +10,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:setup": "tsx scripts/db-setup.ts"
+    "db:setup": "tsx scripts/db-setup.ts",
+    "service": "tsx service/main.ts",
+    "service:start": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','service/start.ps1'\"",
+    "service:install": "powershell -NoProfile -ExecutionPolicy Bypass -File service/install-startup.ps1",
+    "service:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File service/uninstall-startup.ps1"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1166.0",

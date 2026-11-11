@@ -128,3 +128,21 @@ one, switch to HTTPS:
 
 Nothing to do. On first run the app creates a key and stores it in Windows Credential Manager;
 network tokens in the database are encrypted with it.
+
+## 7. Run it as a background service that starts at login
+
+`npm run dev` is for working on the code. For everyday use, run the production build as a service:
+
+```powershell
+npm run build              # after every code change
+npm run service:install    # start at every Windows login (adds a shortcut to your Startup folder)
+npm run service:start      # start it now, hidden
+```
+
+- The app is then at `APP_URL` (normally <http://localhost:3000>); only this laptop can reach it.
+- The log is `data\logs\service.log`.
+- Only one copy runs: if port 3000 is taken (for example by `npm run dev`), the service does not start.
+- To stop it starting at login: `npm run service:uninstall`. To stop a running copy, end the
+  `node.exe` process that runs `service\main.ts` in Task Manager, or restart Windows.
+- Desktop notifications use Windows' own notification system. If Focus Assist / Do Not Disturb is
+  on, they wait in the notification centre. The Alerts badge in the app shows them either way.

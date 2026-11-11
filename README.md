@@ -11,9 +11,22 @@ owner's Windows 11 laptop.
 ## Commands
 
 ```powershell
-npm run dev        # web app at https://localhost:3000
-npm run db:setup   # apply migrations and seed the owner Member
-npm test           # tests (need TEST_DATABASE_URL)
+npm run dev                # web app and worker for development, at APP_URL
+npm run db:setup           # apply migrations and seed the owner Member
+npm test                   # tests (need TEST_DATABASE_URL); real networks are never called
 npm run typecheck
 npm run lint
+npm run build              # production build, needed by the service
+npm run service            # the service in this window (web app + worker)
+npm run service:install    # start the service hidden at every Windows login
+npm run service:start      # start it hidden now
+npm run service:uninstall  # stop starting it at login
 ```
+
+## How publishing works
+
+- Saving a Post creates one Delivery per Channel. The worker checks every 5 seconds for due
+  Deliveries and publishes each as its own job (decision record 0006).
+- Retryable errors retry at about 2, 4 and 8 minutes; then the Delivery is Failed, raises an
+  alert, and offers Retry. A live Delivery is never sent twice.
+- Instagram and Threads fetch media from Cloudflare R2, where each file lives only for the call.

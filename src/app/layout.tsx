@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { getDb } from "@/db/client";
+import { unreadAlertCount } from "@/notify/queries";
 import { NavLink } from "@/ui/nav-link";
 import "./globals.css";
 
@@ -22,7 +24,17 @@ export const metadata: Metadata = {
 // Every screen reads live data from the laptop's database, so nothing is prerendered.
 export const dynamic = "force-dynamic";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+async function alertBadge(): Promise<number> {
+  try {
+    return await unreadAlertCount(getDb());
+  } catch {
+    // Without a database the screen itself explains the problem; the badge just stays empty.
+    return 0;
+  }
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const unread = await alertBadge();
   return (
     // suppressHydrationWarning: browser extensions (LanguageTool, Phia) add attributes to <html> before React loads.
     <html
@@ -55,6 +67,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </NavLink>
             <NavLink href="/brands" icon="brands">
               Brands
+            </NavLink>
+            <NavLink href="/alerts" icon="attention" badge={unread} badgeLabel={`${unread} unread alerts`}>
+              Alerts
             </NavLink>
           </nav>
         </aside>
