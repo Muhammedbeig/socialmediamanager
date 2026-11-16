@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { needsReconnect } from "@/channels/connect";
 import { getConnector, networkName } from "@/connectors/registry";
-import { type Connector, ConnectorError, type ConnectorErrorKind, type PreparedMedia } from "@/connectors/types";
+import { type ChannelAccess, type Connector, ConnectorError, type ConnectorErrorKind, type PreparedMedia } from "@/connectors/types";
 import type { Db } from "@/db/client";
 import { type Network, channels, deliveries, deliveryEvents, mediaAssets, postMedia, posts } from "@/db/schema";
 import { canPublish, checkPost, postFormat } from "@/domain/checks";
@@ -9,14 +9,19 @@ import { prepareImage, prepareVideo } from "@/media/convert";
 import type { MediaHost } from "@/media/host";
 import { type DesktopNotifier, raiseAlert } from "@/notify";
 import { decryptToken } from "@/secrets/tokens";
+import { setSetting } from "@/settings/values";
+import { attentionHooks } from "./attention";
 
 // Runs one Delivery: one Post going to one Channel. Each Delivery succeeds, fails and retries on
 // its own. A Delivery that is live, removed, or whose outcome is unknown is never sent again.
 
 /** Automatic retries after the first attempt: about 15 minutes in all. */
 export const RETRY_DELAYS_MS = [2, 4, 8].map((minutes) => minutes * 60_000);
-/** A call still marked in flight after this long means the worker died mid-call. */
-export const STALE_IN_FLIGHT_MS = 20 * 60_000;
+/**
+ * A call still marked in flight after this long means the worker died mid-call. Longer than a
+ * browser Delivery can wait for the Member to clear a login check (one hour).
+ */
+export const STALE_IN_FLIGHT_MS = 75 * 60_000;
 
 export type RunDeps = {
   now: () => Date;
@@ -124,15 +129,23 @@ export async function runDelivery(db: Db, deliveryId: string, deps: RunDeps): Pr
   try {
     const connector = connectorFor(channel.network);
     if (!connector) throw new ConnectorError("rejected", `Publishing to ${networkName(channel.network)} is not available.`);
-    if (needsReconnect(channel, now) || !channel.tokenEncrypted) {
+    // Browser Channels log in through their own browser profile, so they carry no token.
+    const browser = connector.kind === "browser";
+    if (needsReconnect(channel, now) || (!browser && !channel.tokenEncrypted)) {
       throw new ConnectorError("auth", `${label} needs reconnecting.`);
     }
-    const access = {
+    const access: ChannelAccess = {
       channelId: channel.id,
       externalId: channel.externalId,
-      accessToken: await decryptToken(channel.tokenEncrypted),
+      handle: channel.handle,
+      accessToken: channel.tokenEncrypted ? await decryptToken(channel.tokenEncrypted) : "",
       settings: channel.settings,
+      screenshotName: `delivery-${deliveryId}`,
+      attention: browser
+        ? attentionHooks(db, { channelId: channel.id, label, deliveryId, desktop: deps.desktop })
+        : undefined,
     };
+    if (browser) await setSetting(db, `browser_last_start:${channel.network}`, now.toISOString());
     const capabilities = await connector.capabilities(access);
 
     const assets = await deliveryMedia(db, post.id, claimed.mediaOverride);
@@ -221,7 +234,8 @@ export async function runDelivery(db: Db, deliveryId: string, deps: RunDeps): Pr
       const nextAttemptAt = new Date(deps.now().getTime() + RETRY_DELAYS_MS[claimed.attempts - 1]);
       await db
         .update(deliveries)
-        .set({ inFlightSince: null, nextAttemptAt, lastError: failure.message })
+        // Back to Publishing, in case the attempt had stopped at Needs attention.
+        .set({ status: "publishing", inFlightSince: null, nextAttemptAt, lastError: failure.message })
         .where(eq(deliveries.id, deliveryId));
       await logEvent(db, deliveryId, "retry_scheduled", {
         attempt: claimed.attempts,

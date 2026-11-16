@@ -9,7 +9,7 @@ import { lastHeartbeat, workerRunning } from "./heartbeat";
 // The Settings screen's checklist: everything the app needs to publish, and what is missing.
 
 export type SetupItem = {
-  id: "database" | "worker" | "ffmpeg" | "meta" | "threads" | "r2" | "address" | "startup";
+  id: "database" | "worker" | "ffmpeg" | "chrome" | "meta" | "threads" | "linkedin" | "google" | "r2" | "address" | "startup";
   name: string;
   ok: boolean;
   /** Not needed for every Post, such as Threads when no Threads Channel is wanted. */
@@ -30,6 +30,16 @@ function missing(names: string[]): string[] {
   return names.filter((name) => !process.env[name]);
 }
 
+/** Where Windows installs Google Chrome, for all users or just this one. */
+export function chromeInstalled(): boolean {
+  const candidates = [
+    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
+    process.env["PROGRAMFILES(X86)"] && path.join(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe"),
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
+  ];
+  return candidates.some((candidate) => candidate && existsSync(candidate));
+}
+
 export function startupShortcutPath(): string | null {
   const appData = process.env.APPDATA;
   if (!appData) return null;
@@ -46,6 +56,8 @@ export async function setupStatus(db: Db, now = new Date()): Promise<SetupItem[]
   const [heartbeat, ffmpeg] = await Promise.all([databaseOk ? lastHeartbeat(db) : null, ffmpegVersion()]);
   const metaMissing = missing(["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"]);
   const threadsMissing = missing(["THREADS_APP_ID", "THREADS_APP_SECRET"]);
+  const linkedinMissing = missing(["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"]);
+  const googleMissing = missing(["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]);
   const r2Missing = missingR2Settings();
   const appUrl = process.env.APP_URL ?? "http://localhost:3000";
   const shortcut = startupShortcutPath();
@@ -72,6 +84,15 @@ export async function setupStatus(db: Db, now = new Date()): Promise<SetupItem[]
       detail: ffmpeg ?? "Not found on PATH. Install it (winget install Gyan.FFmpeg) and restart the app.",
     },
     {
+      id: "chrome",
+      name: "Google Chrome",
+      ok: chromeInstalled(),
+      optional: true,
+      detail: chromeInstalled()
+        ? "Installed. TikTok, Pinterest and X post through it, in windows of their own."
+        : "Not found. TikTok, Pinterest and X need Google Chrome installed.",
+    },
+    {
       id: "meta",
       name: "Facebook Pages and Instagram",
       ok: metaMissing.length === 0,
@@ -91,6 +112,26 @@ export async function setupStatus(db: Db, now = new Date()): Promise<SetupItem[]
           : `Add ${threadsMissing.join(" and ")} to .env.local (docs/setup.md, step 3), then restart the app.`,
     },
     {
+      id: "linkedin",
+      name: "LinkedIn",
+      ok: linkedinMissing.length === 0,
+      optional: true,
+      detail:
+        linkedinMissing.length === 0
+          ? `The LinkedIn app is set up for ${process.env.LINKEDIN_PAGES === "1" ? "company Pages" : "your personal profile"}.`
+          : `Add ${linkedinMissing.join(" and ")} to .env.local (docs/setup.md, LinkedIn), then restart the app.`,
+    },
+    {
+      id: "google",
+      name: "YouTube",
+      ok: googleMissing.length === 0,
+      optional: true,
+      detail:
+        googleMissing.length === 0
+          ? "The Google app is set up. Connect YouTube channels on the Channels screen."
+          : `Add ${googleMissing.join(" and ")} to .env.local (docs/setup.md, YouTube), then restart the app.`,
+    },
+    {
       id: "r2",
       name: "Cloudflare R2",
       ok: r2Missing.length === 0,
@@ -103,7 +144,7 @@ export async function setupStatus(db: Db, now = new Date()): Promise<SetupItem[]
       id: "address",
       name: "App address",
       ok: true,
-      detail: `${appUrl}. Network logins send you back here; it must match the redirect URLs in the Meta app.`,
+      detail: `${appUrl}. Network logins send you back here, so it must match the redirect URLs in the Meta, LinkedIn and Google apps.`,
     },
     {
       id: "startup",

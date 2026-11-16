@@ -28,7 +28,7 @@ export async function refreshExpiringTokens(
   let refreshed = 0;
   let failed = 0;
   for (const channel of rows) {
-    const refresh = getNetwork(channel.network)?.auth.refresh;
+    const refresh = getNetwork(channel.network)?.auth?.refresh;
     if (!refresh || !channel.tokenEncrypted) continue;
     try {
       const fresh = await refresh(await decryptToken(channel.tokenEncrypted));

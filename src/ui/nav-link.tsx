@@ -14,6 +14,7 @@ const ICONS = {
   channels: "M8 2.5v11M2.5 8h11M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6",
   brands: "M2.5 5.5l5.5-3 5.5 3v5l-5.5 3-5.5-3zM2.5 5.5l5.5 3 5.5-3M8 8.5v5",
   attention: "M8 2.5l6 10.5H2zM8 6.5v3M8 11.2v.1",
+  alerts: "M4 11V7.5a4 4 0 0 1 8 0V11l1.2 1.5H2.8zM6.6 14a1.5 1.5 0 0 0 2.8 0",
   settings: "M3 5h10M3 11h10M6 3.5v3M10 9.5v3",
 } as const;
 

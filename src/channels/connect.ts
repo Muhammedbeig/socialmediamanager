@@ -12,9 +12,14 @@ export function callbackUrl(appUrl: string, network: string): string {
   return `${appUrl.replace(/\/$/, "")}/api/channels/callback/${network}`;
 }
 
+function authOf(entry: NetworkEntry) {
+  if (!entry.auth) throw new Error(` Channels log in in their own browser window, not through a login link.`);
+  return entry.auth;
+}
+
 export function beginConnect(entry: NetworkEntry, appUrl: string) {
   const state = randomBytes(24).toString("base64url");
-  const url = entry.auth.authorizeUrl({ redirectUri: callbackUrl(appUrl, entry.network), state });
+  const url = authOf(entry).authorizeUrl({ redirectUri: callbackUrl(appUrl, entry.network), state });
   return { url, state };
 }
 
@@ -33,7 +38,7 @@ export async function completeConnect(
   const [brand] = await db.select().from(brands).where(eq(brands.id, params.brandId));
   if (!brand) throw new Error("That Brand no longer exists.");
 
-  const targets = await entry.auth.exchangeCode({
+  const targets = await authOf(entry).exchangeCode({
     code: params.code,
     redirectUri: callbackUrl(params.appUrl, entry.network),
   });

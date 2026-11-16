@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { needsReconnect } from "@/channels/connect";
-import { getConnector, networkName } from "@/connectors/registry";
+import { channelCapabilities, networkName } from "@/connectors/registry";
 import type { Db } from "@/db/client";
 import { type CropRect, type TrimRange, brands, channels, deliveries, mediaAssets, postMedia, posts } from "@/db/schema";
 import { type DraftMedia, canPublish, checkPost } from "@/domain/checks";
@@ -73,11 +73,12 @@ export async function createPost(db: Db, memberId: string, input: NewPost, now =
 
   const caption = input.caption.trimEnd();
   const problems: string[] = [];
+  const rules = new Map(await Promise.all(channelRows.map(async (row) => [row.id, await channelCapabilities(row)] as const)));
   const deliveryValues = input.deliveries.map((delivery) => {
     const channel = channelRows.find((row) => row.id === delivery.channelId)!;
     const label = `${channel.displayName} on ${networkName(channel.network)}`;
     const override = delivery.captionOverride?.trimEnd() ?? null;
-    const connector = getConnector(channel.network);
+    const capabilities = rules.get(channel.id) ?? null;
     // Keep only crops for files in this Post.
     const approvedCrops = Object.fromEntries(
       Object.entries(delivery.approvedCrops).filter(([assetId]) => input.assetIds.includes(assetId)),
@@ -88,12 +89,12 @@ export async function createPost(db: Db, memberId: string, input: NewPost, now =
 
     if (needsReconnect(channel, now)) {
       problems.push(`${label} needs reconnecting first.`);
-    } else if (!connector) {
+    } else if (!capabilities) {
       problems.push(`Publishing to ${networkName(channel.network)} is not available yet.`);
     } else {
       const issues = checkPost(
         { caption: override ?? caption, media, approvedCrops, approvedTrims, fields: delivery.fields ?? {} },
-        connector.baseCapabilities,
+        capabilities,
         networkName(channel.network),
       );
       if (!canPublish(issues)) {

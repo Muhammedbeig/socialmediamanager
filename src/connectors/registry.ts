@@ -4,8 +4,11 @@ import { fakeConnector } from "./fake";
 import { instagramConnector } from "./instagram";
 import { linkedinConnector } from "./linkedin";
 import { youtubeConnector } from "./youtube";
+import { pinterestConnector } from "./browser/pinterest";
+import { tiktokConnector } from "./browser/tiktok";
+import { xConnector } from "./browser/x";
 import { threadsConnector } from "./threads";
-import type { Connector, ConnectorAuth } from "./types";
+import type { Capabilities, Connector, ConnectorAuth } from "./types";
 
 // What the Channels screen needs to know about each network that can be connected,
 // and which Connector publishes to it.
@@ -17,7 +20,8 @@ export type NetworkEntry = {
   /** What one Channel on it is, such as "Page" or "profile". */
   channelNoun: string;
   kind: "api" | "browser";
-  auth: ConnectorAuth;
+  /** API networks log in through OAuth; browser networks log in in the Channel's own window. */
+  auth?: ConnectorAuth;
   /** Settings in .env.local that must be filled in before a Channel can connect. */
   requiredEnv: string[];
 };
@@ -64,6 +68,10 @@ const ENTRIES: NetworkEntry[] = [
     auth: youtubeConnector.auth,
     requiredEnv: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
   },
+  // Browser Connectors (slice 3): no keys; each Channel logs in once in its own Chrome window.
+  { network: "tiktok", name: "TikTok", channelNoun: "account", kind: "browser", requiredEnv: [] },
+  { network: "pinterest", name: "Pinterest", channelNoun: "account", kind: "browser", requiredEnv: [] },
+  { network: "x", name: "X", channelNoun: "account", kind: "browser", requiredEnv: [] },
 ];
 
 const FAKE_ENTRY: NetworkEntry = {
@@ -81,6 +89,9 @@ const CONNECTORS: Partial<Record<Network, Connector>> = {
   threads: threadsConnector,
   linkedin: linkedinConnector,
   youtube: youtubeConnector,
+  tiktok: tiktokConnector,
+  pinterest: pinterestConnector,
+  x: xConnector,
 };
 
 function fakeEnabled(): boolean {
@@ -107,6 +118,28 @@ export function networkName(network: Network): string {
 export function getConnector(network: Network): Connector | undefined {
   if (network === "fake") return fakeEnabled() ? fakeConnector : undefined;
   return CONNECTORS[network];
+}
+
+/**
+ * The rules for one Channel. Most networks have one set; some depend on the Channel's settings,
+ * such as X with Premium. Needs no token: no Connector reads the network for this.
+ */
+export async function channelCapabilities(channel: {
+  id: string;
+  network: Network;
+  externalId: string;
+  handle: string | null;
+  settings: Record<string, unknown>;
+}): Promise<Capabilities | null> {
+  const connector = getConnector(channel.network);
+  if (!connector) return null;
+  return connector.capabilities({
+    channelId: channel.id,
+    externalId: channel.externalId,
+    handle: channel.handle,
+    accessToken: "",
+    settings: channel.settings,
+  });
 }
 
 export function missingEnv(entry: NetworkEntry): string[] {

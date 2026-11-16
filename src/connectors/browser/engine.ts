@@ -1,0 +1,239 @@
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import { Client } from "pg";
+import type { BrowserContext, Locator, Page } from "playwright";
+import { requireEnv } from "@/env";
+import { dataPath } from "@/media/ffmpeg";
+import { type AttentionHooks, ConnectorError } from "../types";
+
+// The browser engine behind the TikTok, Pinterest and X Connectors (AGENTS.md guardrails):
+// - always a visible window of the installed Google Chrome (docs/adr/0004), never headless;
+// - one saved profile per Channel, separate from the owner's own Chrome profile;
+// - one task at a time per Channel, across processes (a database lock);
+// - no stealth, no fingerprint tricks, no CAPTCHA solving: login checks go to the Member;
+// - every step checks the page, and a mismatch fails as "page changed" with a screenshot.
+
+export function profileDir(channelId: string): string {
+  return dataPath(path.join("browser-profiles", channelId));
+}
+
+/** Holds a database lock for one Channel's browser, so no two tasks open its profile at once. */
+async function withChannelLock<T>(channelId: string, waitMs: number, fn: () => Promise<T>): Promise<T> {
+  const client = new Client({ connectionString: requireEnv("DATABASE_URL") });
+  await client.connect();
+  try {
+    const key = `browser:${channelId}`;
+    const started = Date.now();
+    for (;;) {
+      const { rows } = await client.query<{ locked: boolean }>("select pg_try_advisory_lock(hashtext($1)) as locked", [key]);
+      if (rows[0]?.locked) break;
+      if (Date.now() - started > waitMs) {
+        throw new ConnectorError("retryable", "This Channel's browser is busy with another task.");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    try {
+      return await fn();
+    } finally {
+      await client.query("select pg_advisory_unlock(hashtext($1))", [key]).catch(() => {});
+    }
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+export type BrowserTask<T> = (page: Page, context: BrowserContext) => Promise<T>;
+
+/**
+ * Opens this Channel's own Chrome window, runs the task, and closes the window.
+ * `screenshotName` names the screenshot saved when the task fails.
+ */
+export async function withChannelBrowser<T>(
+  channelId: string,
+  task: BrowserTask<T>,
+  options: { lockWaitMs?: number; screenshotName?: string } = {},
+): Promise<T> {
+  return withChannelLock(channelId, options.lockWaitMs ?? 10 * 60_000, async () => {
+    const { chromium } = await import("playwright");
+    const dir = profileDir(channelId);
+    await mkdir(dir, { recursive: true });
+    let context: BrowserContext;
+    try {
+      context = await chromium.launchPersistentContext(dir, {
+        channel: "chrome",
+        headless: false,
+        viewport: null,
+        args: ["--window-size=1280,900"],
+      });
+    } catch (cause) {
+      throw new ConnectorError(
+        "retryable",
+        "Google Chrome could not be opened. Check that Chrome is installed and not blocked.",
+        { cause },
+      );
+    }
+    const page = context.pages()[0] ?? (await context.newPage());
+    try {
+      return await task(page, context);
+    } catch (error) {
+      if (error instanceof PageChanged) {
+        const file = await screenshot(page, options.screenshotName ?? channelId);
+        const shot = `Screenshot: ${file ?? "could not be taken"}.`;
+        if (error.afterSend) {
+          throw new ConnectorError(
+            "outcome_unknown",
+            `The post was sent, but "${error.step}" did not appear, so it is not known whether it went live. ${shot}`,
+          );
+        }
+        throw new ConnectorError("rejected", `The page changed at "${error.step}", so the script needs updating. ${shot}`);
+      }
+      throw error;
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+}
+
+async function screenshot(page: Page, name: string): Promise<string | null> {
+  try {
+    const dir = dataPath("screenshots");
+    await mkdir(dir, { recursive: true });
+    const file = path.join(dir, `${name}-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
+    await page.screenshot({ path: file, fullPage: false });
+    return file;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A page did not look as the script expected. `afterSend` marks a step after the post button was
+ * pressed: the post may be live, so it is never retried automatically.
+ */
+export class PageChanged extends Error {
+  constructor(
+    readonly step: string,
+    readonly afterSend = false,
+  ) {
+    super(`Page changed at ${step}`);
+    this.name = "PageChanged";
+  }
+}
+
+/** Waits for a locator to be visible; if it never is, the page has changed. */
+export async function expectVisible(
+  locator: Locator,
+  step: string,
+  timeoutMs = 30_000,
+  afterSend = false,
+): Promise<Locator> {
+  try {
+    await locator.first().waitFor({ state: "visible", timeout: timeoutMs });
+    return locator.first();
+  } catch {
+    throw new PageChanged(step, afterSend);
+  }
+}
+
+/** The first of these candidates that shows up: sites move fields around, so scripts try a few. */
+export async function firstVisible(candidates: Locator[], step: string, timeoutMs = 30_000): Promise<Locator> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    for (const candidate of candidates) {
+      if (await candidate.first().isVisible().catch(() => false)) return candidate.first();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new PageChanged(step);
+}
+
+/** Waits until a button can be pressed, such as Post once an upload has finished. */
+export async function waitEnabled(locator: Locator, step: string, timeoutMs: number): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const button = locator.first();
+    const enabled =
+      (await button.isEnabled().catch(() => false)) && (await button.getAttribute("aria-disabled").catch(() => null)) !== "true";
+    if (enabled) return;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new PageChanged(step);
+}
+
+/** Replaces the text of a rich editor the way a person would: select all, then type. */
+export async function replaceText(page: Page, editor: Locator, text: string): Promise<void> {
+  await editor.click();
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Delete");
+  if (text) await page.keyboard.insertText(text);
+}
+
+/** True when the first of these locators is visible right now. */
+export async function anyVisible(locators: Locator[]): Promise<boolean> {
+  for (const locator of locators) {
+    if (await locator.first().isVisible().catch(() => false)) return true;
+  }
+  return false;
+}
+
+export type SiteChecks = {
+  /** The cookie that exists only while logged in, such as "auth_token" on x.com. */
+  loggedIn(context: BrowserContext): Promise<boolean>;
+  /** A login check, code or CAPTCHA is on screen. */
+  challenged(page: Page): Promise<boolean>;
+  /** Where to send the Member to log in. */
+  loginUrl: string;
+};
+
+export async function hasCookie(context: BrowserContext, url: string, name: string): Promise<boolean> {
+  const cookies = await context.cookies(url);
+  return cookies.some((cookie) => cookie.name === name && cookie.value !== "" && cookie.value !== "0");
+}
+
+/** Common signs of a verification page: a CAPTCHA frame or words asking to verify. */
+export async function looksLikeChallenge(page: Page): Promise<boolean> {
+  const url = page.url();
+  if (/captcha|challenge|checkpoint|verify|two[-_]?factor|account_access/i.test(url)) return true;
+  return anyVisible([
+    page.locator('iframe[src*="captcha" i], iframe[title*="captcha" i], iframe[src*="arkoselabs" i]'),
+    page.getByText(/verify (it'?s you|you are human|you're human)|security check|enter the code|confirmation code/i),
+  ]);
+}
+
+export const ATTENTION_WAIT_MS = 60 * 60_000;
+
+/**
+ * If the site wants a login check, hands it to the Member and waits until it is cleared:
+ * the window comes to the front, the Delivery shows as Needs attention, and the Member is
+ * notified. Gives up after an hour.
+ */
+export async function clearChallenges(
+  page: Page,
+  context: BrowserContext,
+  site: SiteChecks,
+  attention: AttentionHooks | undefined,
+  options: { goToLogin?: boolean } = {},
+): Promise<void> {
+  const blocked = async () => !(await site.loggedIn(context)) || (await site.challenged(page));
+  if (!(await blocked())) return;
+  if (!attention) throw new ConnectorError("auth", "This Channel needs logging in again in its browser window.");
+
+  if (options.goToLogin !== false && !(await site.loggedIn(context))) {
+    await page.goto(site.loginUrl).catch(() => {});
+  }
+  await page.bringToFront().catch(() => {});
+  const loggedOut = !(await site.loggedIn(context));
+  await attention.needed(
+    loggedOut ? "Log in to this account in its browser window." : "Clear the check (code or CAPTCHA) in the browser window.",
+  );
+
+  const started = Date.now();
+  while (await blocked()) {
+    if (Date.now() - started > ATTENTION_WAIT_MS) {
+      throw new ConnectorError("rejected", "Nobody cleared the login check within an hour. Retry when you are at the laptop.");
+    }
+    if (await attention.bringForwardRequested()) await page.bringToFront().catch(() => {});
+    await page.waitForTimeout(3000);
+  }
+  await attention.resolved();
+}

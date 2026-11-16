@@ -2,7 +2,7 @@ import type { Db } from "@/db/client";
 import { notifications } from "@/db/schema";
 
 export type Alert = {
-  kind: "delivery_failed" | "removal_failed" | "channel_reconnect";
+  kind: "delivery_failed" | "removal_failed" | "channel_reconnect" | "needs_attention";
   title: string;
   body: string;
   deliveryId?: string;

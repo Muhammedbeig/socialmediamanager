@@ -59,12 +59,30 @@ export type Capabilities = {
   removal: { permanent: boolean; note: string };
 };
 
+/**
+ * How a browser Connector hands a login check, code or CAPTCHA to the Member: the Delivery moves
+ * to Needs attention, the Member is notified, and the Connector waits until the check is gone.
+ */
+export type AttentionHooks = {
+  needed(reason: string): Promise<void>;
+  resolved(): Promise<void>;
+  /** True once each time the Member asked (from the app) to bring this Channel's window forward. */
+  bringForwardRequested(): Promise<boolean>;
+};
+
 /** What a Connector needs to act as one Channel. The token arrives already decrypted. */
 export type ChannelAccess = {
   channelId: string;
   externalId: string;
+  /** The profile's @handle, when known. Browser Connectors build post links from it. */
+  handle?: string | null;
+  /** Empty for browser Channels, which log in through their own browser profile. */
   accessToken: string;
   settings: Record<string, unknown>;
+  /** Set for browser Connectors. */
+  attention?: AttentionHooks;
+  /** Where a browser Connector saves a screenshot when a page has changed. */
+  screenshotName?: string;
 };
 
 export type PreparedMedia = {
@@ -133,7 +151,10 @@ export interface Connector {
   readonly baseCapabilities: Capabilities;
   /** Rules for one Channel. May read live limits from the network. */
   capabilities(access: ChannelAccess): Promise<Capabilities>;
-  readonly auth: ConnectorAuth;
+  /** How API Channels log in. Browser Channels log in in their own browser window instead. */
+  readonly auth?: ConnectorAuth;
+  /** Browser Connectors: where to log in, and how to tell a session is logged in. */
+  readonly site?: import("./browser/engine").SiteChecks;
   publish(access: ChannelAccess, input: PublishInput): Promise<PublishResult>;
   /** Present only when `capabilities.edit.text` is true. */
   editText?(access: ChannelAccess, live: LiveDelivery, text: string): Promise<void>;

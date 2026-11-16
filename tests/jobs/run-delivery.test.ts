@@ -157,9 +157,10 @@ describe("runDelivery", () => {
     const { delivery } = await deliveryTo(db, setup, { scheduledFor: T0 });
     await db.update(deliveries).set({ status: "publishing", inFlightSince: T0 }).where(eq(deliveries.id, delivery.id));
 
-    clock = minutes(5);
+    // Still within the hour a browser Delivery may wait for the Member: leave it alone.
+    clock = minutes(60);
     expect(await runDelivery(db, delivery.id, deps())).toBe("skipped");
-    clock = minutes(25);
+    clock = minutes(80);
     expect(await runDelivery(db, delivery.id, deps())).toBe("failed");
     expect((await row(delivery.id)).lastError).toMatch(/may or may not be live/);
     expect(fakeNetwork.posts.size).toBe(0);

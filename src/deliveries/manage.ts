@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
-import { getConnector, networkName } from "@/connectors/registry";
-import type { Capabilities, Connector } from "@/connectors/types";
+import { channelCapabilities, getConnector, networkName } from "@/connectors/registry";
+import type { Capabilities, ChannelAccess, Connector } from "@/connectors/types";
 import { ConnectorError } from "@/connectors/types";
 import type { Db } from "@/db/client";
 import {
@@ -19,6 +19,8 @@ import { computePostStatus } from "@/domain/post-status";
 import { type DesktopNotifier, raiseAlert } from "@/notify";
 import { deliveryMedia } from "@/jobs/run-delivery";
 import { decryptToken } from "@/secrets/tokens";
+import { attentionHooks } from "@/jobs/attention";
+import { desktopNotifier } from "@/notify/desktop";
 
 // What happens to a Post after it is saved: Edit, Replace, Removal and Retry, each per Delivery.
 
@@ -46,15 +48,21 @@ function connectorFor(channel: ChannelRow): Connector {
   return connector;
 }
 
-async function accessFor(channel: ChannelRow) {
-  if (!channel.tokenEncrypted || channel.status === "reconnect_needed") {
+async function accessFor(channel: ChannelRow, db?: Db): Promise<ChannelAccess> {
+  const browser = channel.connectorKind === "browser";
+  if ((!browser && !channel.tokenEncrypted) || channel.status === "reconnect_needed") {
     throw new UserError(`${channel.displayName} on ${networkName(channel.network)} needs reconnecting first.`);
   }
+  const label = `${channel.displayName} on ${networkName(channel.network)}`;
   return {
     channelId: channel.id,
     externalId: channel.externalId,
-    accessToken: await decryptToken(channel.tokenEncrypted),
+    handle: channel.handle,
+    accessToken: channel.tokenEncrypted ? await decryptToken(channel.tokenEncrypted) : "",
     settings: channel.settings,
+    screenshotName: `channel-${channel.id}`,
+    // A browser task that meets a login check asks the Member, then carries on.
+    attention: browser && db ? attentionHooks(db, { channelId: channel.id, label, desktop: desktopNotifier() }) : undefined,
   };
 }
 
@@ -123,7 +131,7 @@ export async function editDelivery(db: Db, deliveryId: string, rawText: string):
   const text = rawText.trimEnd();
   if (delivery.status !== "published" || !delivery.externalPostId) throw new UserError("Only a live Delivery can be edited.");
   const connector = connectorFor(channel);
-  const access = await accessFor(channel);
+  const access = await accessFor(channel, db);
   const capabilities = await connector.capabilities(access);
   if (!capabilities.edit.text || !connector.editText) throw new UserError(capabilities.edit.note);
   const problems = await problemsFor(db, delivery, channel, text, capabilities, null);
@@ -191,7 +199,7 @@ async function removeOne(db: Db, deliveryId: string, options: { desktop?: Deskto
   let access: Awaited<ReturnType<typeof accessFor>>;
   try {
     connector = connectorFor(channel);
-    access = await accessFor(channel);
+    access = await accessFor(channel, db);
   } catch (error) {
     return report(false, error instanceof Error ? error.message : "Not available.");
   }
@@ -246,7 +254,7 @@ export async function replaceDelivery(
   if (delivery.status !== "published") throw new UserError("Only a live Delivery can be replaced.");
   if (mediaIds && new Set(mediaIds).size !== mediaIds.length) throw new UserError("A file was chosen twice.");
   const connector = connectorFor(channel);
-  const capabilities = await connector.capabilities(await accessFor(channel));
+  const capabilities = await connector.capabilities(await accessFor(channel, db));
   const problems = await problemsFor(db, delivery, channel, text, capabilities, mediaIds);
   if (problems.length > 0) throw new UserError(problems.join(" "));
 
@@ -309,6 +317,10 @@ export async function loadPostDetail(db: Db, postId: string) {
   const overrideIds = [...new Set(current.flatMap(({ delivery }) => delivery.mediaOverride ?? []))];
   const overrideAssets =
     overrideIds.length > 0 ? await db.select().from(mediaAssets).where(inArray(mediaAssets.id, overrideIds)) : [];
+  // Each Channel's own rules (X with Premium can Edit; without, it cannot).
+  const capabilityByChannel = new Map(
+    await Promise.all(current.map(async ({ channel }) => [channel.id, await channelCapabilities(channel)] as const)),
+  );
   return {
     post: row.post,
     brandName: row.brandName,
@@ -316,6 +328,7 @@ export async function loadPostDetail(db: Db, postId: string) {
     media: mediaRows.map(({ asset }) => asset),
     deliveries: current.map(({ delivery, channel }) => {
       const connector = getConnector(channel.network);
+      const rules = capabilityByChannel.get(channel.id) ?? null;
       return {
         ...delivery,
         text: delivery.captionOverride ?? row.post.caption,
@@ -323,11 +336,11 @@ export async function loadPostDetail(db: Db, postId: string) {
         channelHandle: channel.handle,
         network: channel.network,
         networkName: networkName(channel.network),
-        canEdit: Boolean(connector?.baseCapabilities.edit.text && connector.editText),
-        editNote: connector?.baseCapabilities.edit.note ?? "",
-        removalNote: connector?.baseCapabilities.removal.note ?? "",
-        removalPermanent: connector?.baseCapabilities.removal.permanent ?? true,
-        captionRules: connector?.baseCapabilities.caption ?? null,
+        canEdit: Boolean(rules?.edit.text && connector?.editText),
+        editNote: rules?.edit.note ?? "",
+        removalNote: rules?.removal.note ?? "",
+        removalPermanent: rules?.removal.permanent ?? true,
+        captionRules: rules?.caption ?? null,
         replaced: deliveryRows.some(({ delivery: older }) => older.id === delivery.replacesDeliveryId),
         ownMedia: delivery.mediaOverride
           ? delivery.mediaOverride.flatMap((id) => overrideAssets.filter((asset) => asset.id === id))

@@ -1,14 +1,15 @@
 import { getDb } from "@/db/client";
 import { setupStatus } from "@/settings/status";
-import { FlashMessages, Notice, PageHeader, Panel, Pill, buttonClass } from "@/ui/primitives";
-import { installStartupAction, testR2Action, uninstallStartupAction } from "./actions";
+import { browserSpacingMinutes } from "@/settings/values";
+import { FlashMessages, Notice, PageHeader, Panel, PanelHeading, Pill, buttonClass, inputClass, labelClass } from "@/ui/primitives";
+import { installStartupAction, setSpacingAction, testR2Action, uninstallStartupAction } from "./actions";
 
 export default async function SettingsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [query, items] = await Promise.all([searchParams, setupStatus(getDb())]);
+  const [query, items, spacing] = await Promise.all([searchParams, setupStatus(getDb()), browserSpacingMinutes(getDb())]);
   const required = items.filter((item) => !item.optional);
   const ready = required.every((item) => item.ok);
   const r2 = items.find((item) => item.id === "r2")!;
@@ -64,6 +65,23 @@ export default async function SettingsPage({
             </li>
           ))}
         </ul>
+      </Panel>
+
+      <Panel className="mt-6 p-4">
+        <PanelHeading>Pace of TikTok, Pinterest and X</PanelHeading>
+        <p className="mt-1 max-w-2xl text-sm leading-5 text-muted">
+          Deliveries to the same one of these networks go out one at a time, with at least this gap between them, so the
+          accounts post at a human pace.
+        </p>
+        <form action={setSpacingAction} className="mt-3 flex flex-wrap items-end gap-2">
+          <label className={labelClass}>
+            Minutes between Deliveries
+            <input type="number" name="minutes" min={1} max={120} defaultValue={spacing} className={`${inputClass} w-28`} />
+          </label>
+          <button type="submit" className={buttonClass.secondary}>
+            Save
+          </button>
+        </form>
       </Panel>
     </>
   );

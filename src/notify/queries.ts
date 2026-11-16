@@ -1,6 +1,16 @@
-import { and, count, desc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { channels, deliveries, notifications, posts } from "@/db/schema";
+
+/** Deliveries paused at a login check, plus browser Channels with a login window open. */
+export async function needsAttentionCount(db: Db): Promise<number> {
+  const [paused] = await db.select({ value: count() }).from(deliveries).where(eq(deliveries.status, "needs_attention"));
+  const [logins] = await db
+    .select({ value: count() })
+    .from(channels)
+    .where(and(eq(channels.connectorKind, "browser"), sql`${channels.settings} ? 'loginStartedAt'`));
+  return (paused?.value ?? 0) + (logins?.value ?? 0);
+}
 
 /** Alerts not yet read: the number on the in-app badge. */
 export async function unreadAlertCount(db: Db): Promise<number> {

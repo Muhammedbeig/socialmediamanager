@@ -1,3 +1,4 @@
+import { clearStaleLogins, runNextLogin } from "@/channels/browser";
 import { refreshExpiringTokens } from "@/channels/refresh";
 import { createDb } from "@/db/client";
 import { createR2Host, missingR2Settings } from "@/media/r2";
@@ -20,6 +21,7 @@ export async function startWorker(options: WorkerOptions = {}): Promise<{ stop()
   const { db, pool } = createDb(connectionString);
   await runMigrations(db);
   await seedOwner(db);
+  await clearStaleLogins(db);
 
   const mediaHost = options.mediaHost === undefined ? createR2Host() : options.mediaHost;
   options = { ...options, desktop: options.desktop ?? desktopNotifier() };
@@ -47,9 +49,27 @@ export async function startWorker(options: WorkerOptions = {}): Promise<{ stop()
   await refresh();
   const refreshTimer = setInterval(refresh, 6 * 60 * 60_000);
 
+  // Browser Channels waiting to log in: open their window, one at a time.
+  let loggingIn = false;
+  const logins = async () => {
+    if (loggingIn) return;
+    loggingIn = true;
+    try {
+      while (await runNextLogin(db, { desktop: options.desktop, log })) {
+        // Keep going while requests are waiting.
+      }
+    } catch (error) {
+      log(`Browser login failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      loggingIn = false;
+    }
+  };
+  const loginTimer = setInterval(logins, 5_000);
+
   return {
     async stop() {
       clearInterval(refreshTimer);
+      clearInterval(loginTimer);
       await publisher.stop();
       await pool.end();
     },

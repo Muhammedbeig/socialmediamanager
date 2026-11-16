@@ -135,10 +135,10 @@ describe("LinkedIn Connector", () => {
   });
 
   it("asks a personal app for the member scopes and connects the profile", async () => {
-    const url = new URL(linkedin.auth.authorizeUrl({ redirectUri: "http://localhost:3000/cb", state: "s" }));
+    const url = new URL(linkedin.auth!.authorizeUrl({ redirectUri: "http://localhost:3000/cb", state: "s" }));
     expect(url.searchParams.get("scope")).toBe("openid profile w_member_social");
     answers.push({ body: { access_token: "AT", expires_in: 5_184_000 } }, { body: { sub: "abc", name: "Furquan" } });
-    const [target] = await linkedin.auth.exchangeCode({ code: "c", redirectUri: "http://localhost:3000/cb" });
+    const [target] = await linkedin.auth!.exchangeCode({ code: "c", redirectUri: "http://localhost:3000/cb" });
     expect(target).toMatchObject({ externalId: "urn:li:person:abc", displayName: "Furquan", accessToken: "AT" });
   });
 

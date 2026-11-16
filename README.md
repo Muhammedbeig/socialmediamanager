@@ -5,6 +5,7 @@ owner's Windows 11 laptop.
 
 - [AGENTS.md](AGENTS.md): architecture and rules
 - [GLOSSARY.md](GLOSSARY.md): the project's terms
+- [docs/api-keys.md](docs/api-keys.md): every API key, where to get it, and where it goes
 - [docs/setup.md](docs/setup.md): what to install and configure
 - [docs/first-run.md](docs/first-run.md): checking everything with your real Channels, step by step
 - [docs/adr/](docs/adr/): decisions and their reasons

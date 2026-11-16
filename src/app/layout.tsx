@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import { getDb } from "@/db/client";
-import { unreadAlertCount } from "@/notify/queries";
+import { needsAttentionCount, unreadAlertCount } from "@/notify/queries";
 import { NavLink } from "@/ui/nav-link";
 import "./globals.css";
 
@@ -16,17 +16,19 @@ export const metadata: Metadata = {
 // Every screen reads live data from the laptop's database, so nothing is prerendered.
 export const dynamic = "force-dynamic";
 
-async function alertBadge(): Promise<number> {
+async function badges(): Promise<{ unread: number; attention: number }> {
   try {
-    return await unreadAlertCount(getDb());
+    const db = getDb();
+    const [unread, attention] = await Promise.all([unreadAlertCount(db), needsAttentionCount(db)]);
+    return { unread, attention };
   } catch {
-    // Without a database the screen itself explains the problem; the badge just stays empty.
-    return 0;
+    // Without a database the screen itself explains the problem; the badges just stay empty.
+    return { unread: 0, attention: 0 };
   }
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const unread = await alertBadge();
+  const { unread, attention } = await badges();
   return (
     // suppressHydrationWarning: browser extensions (LanguageTool, Phia) add attributes to <html> before React loads.
     <html
@@ -60,7 +62,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <NavLink href="/brands" icon="brands">
               Brands
             </NavLink>
-            <NavLink href="/alerts" icon="attention" badge={unread} badgeLabel={`${unread} unread alerts`}>
+            <NavLink href="/needs-attention" icon="attention" badge={attention} badgeLabel={`${attention} waiting for you`}>
+              Needs attention
+            </NavLink>
+            <NavLink href="/alerts" icon="alerts" badge={unread} badgeLabel={`${unread} unread alerts`}>
               Alerts
             </NavLink>
             <NavLink href="/settings" icon="settings">

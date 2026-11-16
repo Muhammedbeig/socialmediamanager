@@ -4,7 +4,9 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { runFormAction } from "@/app/form-action";
 import { UserError } from "@/domain/errors";
+import { getDb } from "@/db/client";
 import { testR2 } from "@/settings/r2-test";
+import { setSetting } from "@/settings/values";
 
 function runScript(script: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -14,6 +16,17 @@ function runScript(script: string): Promise<void> {
       { windowsHide: true, timeout: 30_000 },
       (error, _stdout, stderr) => (error ? reject(new UserError(stderr.trim() || error.message)) : resolve()),
     );
+  });
+}
+
+export async function setSpacingAction(formData: FormData) {
+  await runFormAction("/settings", async () => {
+    const minutes = Number(formData.get("minutes"));
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 120) {
+      throw new UserError("Pick between 1 and 120 minutes.");
+    }
+    await setSetting(getDb(), "browser_spacing_minutes", Math.round(minutes));
+    return `TikTok, Pinterest and X Deliveries now go out at least ${Math.round(minutes)} minutes apart per network.`;
   });
 }
 

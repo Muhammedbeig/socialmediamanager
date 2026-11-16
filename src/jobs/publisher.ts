@@ -1,7 +1,9 @@
+import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import { PgBoss } from "pg-boss";
 import type { Db } from "@/db/client";
+import { channels, deliveries } from "@/db/schema";
 import { beat } from "@/settings/heartbeat";
-import { deliveries } from "@/db/schema";
+import { browserSpacingMinutes, getSetting } from "@/settings/values";
 import { type RunDeps, dueCondition, runDelivery } from "./run-delivery";
 
 // The publisher: one pg-boss job per due Delivery.
@@ -15,11 +17,43 @@ const DISPATCH_INTERVAL_MS = 5_000;
 type DeliverJob = { deliveryId: string };
 type Send = (deliveryId: string) => Promise<unknown>;
 
-/** Sends a job for every Delivery that is due. A Delivery already queued or running is not sent twice. */
+/**
+ * Sends a job for every Delivery that is due. A Delivery already queued or running is not sent twice.
+ * Browser networks go at human pace: one Delivery at a time per network, spaced by the Settings value.
+ */
 export async function dispatchDue(db: Db, send: Send, now: Date): Promise<number> {
-  const due = await db.select({ id: deliveries.id }).from(deliveries).where(dueCondition(now)).limit(200);
-  for (const row of due) await send(row.id);
-  return due.length;
+  const due = await db
+    .select({ id: deliveries.id, network: channels.network, kind: channels.connectorKind })
+    .from(deliveries)
+    .innerJoin(channels, eq(channels.id, deliveries.channelId))
+    .where(dueCondition(now))
+    .orderBy(asc(sql`coalesce(${deliveries.nextAttemptAt}, ${deliveries.scheduledFor})`))
+    .limit(200);
+
+  const spacingMs = (await browserSpacingMinutes(db)) * 60_000;
+  const busy = new Set(
+    (
+      await db
+        .select({ network: channels.network })
+        .from(deliveries)
+        .innerJoin(channels, eq(channels.id, deliveries.channelId))
+        .where(and(eq(channels.connectorKind, "browser"), isNotNull(deliveries.inFlightSince)))
+    ).map((row) => row.network),
+  );
+
+  let sent = 0;
+  for (const row of due) {
+    if (row.kind === "browser") {
+      if (busy.has(row.network)) continue;
+      const last = await getSetting<string>(db, `browser_last_start:${row.network}`);
+      if (last && now.getTime() - new Date(last).getTime() < spacingMs) continue;
+      // Only one per network now; the next waits for this one and the spacing.
+      busy.add(row.network);
+    }
+    await send(row.id);
+    sent++;
+  }
+  return sent;
 }
 
 export type Publisher = { stop(): Promise<void>; dispatchNow(): Promise<void> };
@@ -38,8 +72,11 @@ export async function startPublisher(options: {
   boss.on("error", (error) => log(`Job queue error: ${error instanceof Error ? error.message : String(error)}`));
   await boss.start();
   // "stately" with the Delivery ID as key: at most one queued and one running job per Delivery.
-  // Retries are decided per error by the runner, so pg-boss itself never retries.
-  await boss.createQueue(DELIVER_QUEUE, { policy: "stately", retryLimit: 0, expireInSeconds: 15 * 60 });
+  // Retries are decided per error by the runner, so pg-boss itself never retries. A browser Delivery
+  // may wait up to an hour for the Member to clear a login check, so jobs may run 70 minutes.
+  await boss.createQueue(DELIVER_QUEUE, { policy: "stately", retryLimit: 0, expireInSeconds: 70 * 60 });
+  // createQueue leaves an existing queue as it was; bring older installs up to date.
+  await boss.updateQueue(DELIVER_QUEUE, { retryLimit: 0, expireInSeconds: 70 * 60 });
 
   await boss.work<DeliverJob>(
     DELIVER_QUEUE,

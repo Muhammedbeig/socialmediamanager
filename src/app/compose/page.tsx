@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { listBrandsWithChannels } from "@/brands/service";
 import { needsReconnect } from "@/channels/connect";
-import { getConnector, networkName } from "@/connectors/registry";
+import { channelCapabilities, networkName } from "@/connectors/registry";
 import { getDb } from "@/db/client";
 import { loadPostDetail } from "@/deliveries/manage";
 import { listAssets } from "@/media/library";
@@ -23,22 +23,23 @@ export default async function ComposePage({
     duplicateId ? loadPostDetail(db, duplicateId).catch(() => null) : null,
   ]);
 
-  const composerBrands: ComposerBrand[] = brands.map((brand) => ({
-    id: brand.id,
-    name: brand.name,
-    channels: brand.channels.map((channel) => {
-      const connector = getConnector(channel.network);
-      return {
-        id: channel.id,
-        name: channel.displayName,
-        handle: channel.handle,
-        network: channel.network,
-        networkName: networkName(channel.network),
-        capabilities: connector?.baseCapabilities ?? null,
-        reconnect: needsReconnect(channel),
-      };
-    }),
-  }));
+  const composerBrands: ComposerBrand[] = await Promise.all(
+    brands.map(async (brand) => ({
+      id: brand.id,
+      name: brand.name,
+      channels: await Promise.all(
+        brand.channels.map(async (channel) => ({
+          id: channel.id,
+          name: channel.displayName,
+          handle: channel.handle,
+          network: channel.network,
+          networkName: networkName(channel.network),
+          capabilities: await channelCapabilities(channel),
+          reconnect: needsReconnect(channel),
+        })),
+      ),
+    })),
+  );
 
   const hasChannels = composerBrands.some((brand) => brand.channels.length > 0);
   // Duplicate: start from another Post's caption and media, on a different Brand where there is one.

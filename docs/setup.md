@@ -100,6 +100,48 @@ a linked Instagram profile becomes one Instagram Channel.
 4. Add each Threads profile under **App roles > Roles > Add People > Threads Tester**. Then accept
    the invite as that profile: Threads > Settings > Account > Website permissions > Invites.
 
+## 3b. LinkedIn
+
+1. Go to <https://www.linkedin.com/developers/apps> and **Create app**. LinkedIn asks for a
+   company Page to link the app to (any Page you manage; it is only shown on the consent screen).
+2. On the **Products** tab, request **Share on LinkedIn** and **Sign In with LinkedIn using
+   OpenID Connect**. Both are granted at once.
+3. On the **Auth** tab, add the redirect URL `APP_URL/api/channels/callback/linkedin`, then copy
+   the **Client ID** and **Primary Client Secret** into `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`.
+
+This posts as your personal profile. Posting as a **company Page** needs the **Community
+Management API** product, which LinkedIn grants after a review and only on an app with no other
+products: create a second app for it, use its keys instead, and set `LINKEDIN_PAGES=1`.
+
+Logins last 60 days; the Channels screen shows the date, and you reconnect when it runs out.
+
+## 3c. YouTube (Google)
+
+1. Create a Google Cloud project: <https://console.cloud.google.com/projectcreate>.
+2. Turn on the **YouTube Data API v3** for it:
+   <https://console.cloud.google.com/apis/library/youtube.googleapis.com>.
+3. Open **Google Auth Platform** (<https://console.cloud.google.com/auth/overview>) and set it up:
+   app name, your email, audience **External**. Add your own Google account as a **test user**.
+4. Under **Clients**, create an OAuth client of type **Web application**, with the authorized
+   redirect URI `APP_URL/api/channels/callback/youtube`. Copy its Client ID and Client secret
+   into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+5. Google ends logins after 7 days while the app is in **Testing**. To keep YouTube connected,
+   under **Audience** click **Publish app**. You do not need Google's verification for your own
+   use: when you connect, Google warns that the app is unverified; choose **Advanced**, then go on.
+
+YouTube allows about 100 uploads a day per project.
+
+## 3d. TikTok, Pinterest and X
+
+No keys. On the Channels screen, use **Add a TikTok, Pinterest or X account**. A Chrome window
+of its own opens at the network's login page: log in there once (the publisher must be running).
+That window's profile keeps the login for later Posts, separate from your own Chrome.
+
+When a network asks for a code or a CAPTCHA while posting, you get a desktop notification and the
+Post waits on the **Needs attention** screen until you clear it in that window.
+
+For an X account with Premium, tick **Premium** on its row: it allows long posts and editing.
+
 ## 4. Cloudflare R2
 
 Instagram and Threads fetch media from a public URL. The app uploads the file to R2 when a

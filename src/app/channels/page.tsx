@@ -16,9 +16,25 @@ import {
   inputClass,
   labelClass,
 } from "@/ui/primitives";
-import { disconnectChannelAction, moveChannelAction } from "./actions";
+import {
+  addBrowserChannelAction,
+  bringForwardAction,
+  disconnectChannelAction,
+  loginAgainAction,
+  moveChannelAction,
+  setPremiumAction,
+} from "./actions";
 
 const dateFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+/** Where a browser Channel's login stands, from its settings. */
+function browserLoginState(settings: Record<string, unknown>) {
+  return {
+    requested: typeof settings.loginRequestedAt === "string",
+    inWindow: typeof settings.loginStartedAt === "string",
+    error: typeof settings.loginError === "string" ? settings.loginError : null,
+  };
+}
 
 export default async function ChannelsPage({
   searchParams,
@@ -27,7 +43,9 @@ export default async function ChannelsPage({
 }) {
   const [query, brands] = await Promise.all([searchParams, listBrandsWithChannels(getDb())]);
   const networks = listNetworks();
-  const notSetUp = networks.filter((entry) => missingEnv(entry).length > 0);
+  const apiNetworks = networks.filter((entry) => entry.kind === "api");
+  const browserNetworks = networks.filter((entry) => entry.kind === "browser");
+  const notSetUp = apiNetworks.filter((entry) => missingEnv(entry).length > 0);
   const now = new Date();
   const reconnectCount = brands
     .flatMap((brand) => brand.channels)
@@ -72,7 +90,7 @@ export default async function ChannelsPage({
                   ))}
                 </select>
               </label>
-              {networks.map((entry) => (
+              {apiNetworks.map((entry) => (
                 <button
                   key={entry.network}
                   type="submit"
@@ -97,6 +115,47 @@ export default async function ChannelsPage({
             ) : null}
           </Panel>
 
+          <Panel className="mb-8 p-4">
+            <PanelHeading>Add a TikTok, Pinterest or X account</PanelHeading>
+            <p className="mt-1 max-w-3xl text-base text-muted">
+              These post through their websites in a Chrome window of their own, separate from your Chrome. After you add
+              one, its window opens at the login page: log in there once. The publisher must be running.
+            </p>
+            <form action={addBrowserChannelAction} className="mt-4 flex flex-wrap items-end gap-2">
+              <label className={labelClass}>
+                Brand
+                <select name="brandId" className={`${inputClass} min-w-40`}>
+                  {brands.map((brand) => (
+                    <option key={brand.id} value={brand.id}>
+                      {brand.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={labelClass}>
+                Network
+                <select name="network" className={inputClass}>
+                  {browserNetworks.map((entry) => (
+                    <option key={entry.network} value={entry.network}>
+                      {entry.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={labelClass}>
+                Name in this app
+                <input name="displayName" required maxLength={80} placeholder="Such as Acme on TikTok" className={`${inputClass} w-56`} />
+              </label>
+              <label className={labelClass}>
+                Handle
+                <input name="handle" maxLength={100} placeholder="@acme" className={`${inputClass} w-40`} />
+              </label>
+              <button type="submit" className={buttonClass.primary}>
+                Add account
+              </button>
+            </form>
+          </Panel>
+
           <div className="flex flex-col gap-6">
             {brands.map((brand) => (
               <section key={brand.id} aria-labelledby={`brand-${brand.id}`}>
@@ -110,6 +169,8 @@ export default async function ChannelsPage({
                     <ul className="divide-y divide-border">
                       {brand.channels.map((channel) => {
                         const reconnect = needsReconnect(channel, now);
+                        const browser = channel.connectorKind === "browser";
+                        const login = browserLoginState(channel.settings);
                         return (
                           <li key={channel.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3">
                             <NetworkBadge network={channel.network} />
@@ -117,15 +178,63 @@ export default async function ChannelsPage({
                               <p className="truncate text-base font-medium">{channel.displayName}</p>
                               <p className="mt-0.5 text-xs text-muted">
                                 {channel.handle ? `@${channel.handle} · ` : ""}
-                                {channel.tokenExpiresAt
-                                  ? `Login lasts until ${dateFormat.format(channel.tokenExpiresAt)}`
-                                  : "Login does not expire"}
+                                {browser
+                                  ? "Posts through its own Chrome window"
+                                  : channel.tokenExpiresAt
+                                    ? `Login lasts until ${dateFormat.format(channel.tokenExpiresAt)}`
+                                    : "Login does not expire"}
                               </p>
+                              {browser && login.error ? <p className="mt-0.5 text-xs text-danger">Last login: {login.error}</p> : null}
                             </div>
-                            {reconnect ? <Pill tone="warn">Reconnect needed</Pill> : <Pill tone="ok">Connected</Pill>}
+                            {browser && login.inWindow ? (
+                              <Pill tone="warn" live>
+                                Log in in its Chrome window
+                              </Pill>
+                            ) : browser && login.requested ? (
+                              <Pill tone="neutral" live>
+                                Opening its window
+                              </Pill>
+                            ) : reconnect ? (
+                              <Pill tone="warn">{browser ? "Log in needed" : "Reconnect needed"}</Pill>
+                            ) : (
+                              <Pill tone="ok">Connected</Pill>
+                            )}
 
                             <div className="flex flex-wrap items-center gap-2">
-                              {reconnect ? (
+                              {browser && login.inWindow ? (
+                                <form action={bringForwardAction}>
+                                  <input type="hidden" name="channelId" value={channel.id} />
+                                  <button type="submit" className={buttonClass.secondary}>
+                                    Bring window forward
+                                  </button>
+                                </form>
+                              ) : null}
+                              {browser && !login.inWindow && !login.requested ? (
+                                <form action={loginAgainAction}>
+                                  <input type="hidden" name="channelId" value={channel.id} />
+                                  <button type="submit" className={reconnect ? buttonClass.primary : buttonClass.secondary}>
+                                    {reconnect ? "Log in" : "Log in again"}
+                                  </button>
+                                </form>
+                              ) : null}
+                              {channel.network === "x" ? (
+                                <form action={setPremiumAction} className="flex items-center gap-2">
+                                  <input type="hidden" name="channelId" value={channel.id} />
+                                  <label className="flex items-center gap-1.5 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      name="premium"
+                                      defaultChecked={channel.settings.premium === true}
+                                      className="size-4 accent-[#b8ff2c]"
+                                    />
+                                    Premium
+                                  </label>
+                                  <button type="submit" className={buttonClass.smallSecondary}>
+                                    Save
+                                  </button>
+                                </form>
+                              ) : null}
+                              {!browser && reconnect ? (
                                 <form method="get" action={`/api/channels/connect/${channel.network}`}>
                                   <input type="hidden" name="brandId" value={brand.id} />
                                   <button type="submit" className={buttonClass.primary}>
