@@ -2,6 +2,8 @@ import type { Network } from "@/db/schema";
 import { facebookConnector } from "./facebook";
 import { fakeConnector } from "./fake";
 import { instagramConnector } from "./instagram";
+import { linkedinConnector } from "./linkedin";
+import { youtubeConnector } from "./youtube";
 import { threadsConnector } from "./threads";
 import type { Connector, ConnectorAuth } from "./types";
 
@@ -46,6 +48,22 @@ const ENTRIES: NetworkEntry[] = [
     auth: threadsConnector.auth,
     requiredEnv: ["THREADS_APP_ID", "THREADS_APP_SECRET"],
   },
+  {
+    network: "linkedin",
+    name: "LinkedIn",
+    channelNoun: "profile or Page",
+    kind: "api",
+    auth: linkedinConnector.auth,
+    requiredEnv: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
+  },
+  {
+    network: "youtube",
+    name: "YouTube",
+    channelNoun: "channel",
+    kind: "api",
+    auth: youtubeConnector.auth,
+    requiredEnv: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+  },
 ];
 
 const FAKE_ENTRY: NetworkEntry = {
@@ -61,6 +79,8 @@ const CONNECTORS: Partial<Record<Network, Connector>> = {
   facebook: facebookConnector,
   instagram: instagramConnector,
   threads: threadsConnector,
+  linkedin: linkedinConnector,
+  youtube: youtubeConnector,
 };
 
 function fakeEnabled(): boolean {

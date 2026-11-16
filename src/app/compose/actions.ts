@@ -30,6 +30,7 @@ const payloadSchema = z.object({
         captionOverride: z.string().max(100_000).nullable(),
         approvedCrops: z.record(z.uuid(), cropSchema),
         approvedTrims: z.record(z.uuid(), trimSchema).default({}),
+        fields: z.record(z.string().max(50), z.string().max(5000)).default({}),
       }),
     )
     .max(100),

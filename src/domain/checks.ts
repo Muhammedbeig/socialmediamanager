@@ -20,6 +20,8 @@ export type Draft = {
   media: DraftMedia[];
   approvedCrops: Record<string, CropRect>;
   approvedTrims?: Record<string, TrimRange>;
+  /** Values for the network's extra fields (see Capabilities.fields). */
+  fields?: Record<string, unknown>;
 };
 
 export type Issue =
@@ -178,6 +180,31 @@ export function checkPost(draft: Draft, capabilities: Capabilities, network: str
   for (const item of draft.media) {
     if (item.kind === "image") issues.push(...checkImage(item, draft, capabilities, network));
     else issues.push(...checkVideo(item, draft, capabilities, network));
+  }
+  issues.push(...checkFields(draft.fields ?? {}, capabilities, network));
+  return issues;
+}
+
+/** The value a field has: what the Member entered, else its default. */
+export function fieldValue(values: Record<string, unknown>, spec: NonNullable<Capabilities["fields"]>[number]): string {
+  const value = values[spec.key];
+  return typeof value === "string" ? value : (spec.defaultValue ?? "");
+}
+
+function checkFields(values: Record<string, unknown>, capabilities: Capabilities, network: string): Issue[] {
+  const issues: Issue[] = [];
+  for (const spec of capabilities.fields ?? []) {
+    const value = fieldValue(values, spec).trim();
+    if (spec.required && value.length === 0) {
+      issues.push({ kind: "block", message: `${network} needs a ${spec.label.toLowerCase()}.` });
+    } else if (spec.maxLength !== undefined && countChars(value) > spec.maxLength) {
+      issues.push({
+        kind: "block",
+        message: `${network} takes a ${spec.label.toLowerCase()} of up to ${spec.maxLength} characters; this one has ${countChars(value)}.`,
+      });
+    } else if (spec.kind === "select" && value && !spec.options?.some((option) => option.value === value)) {
+      issues.push({ kind: "block", message: `Pick a ${spec.label.toLowerCase()} for ${network}.` });
+    }
   }
   return issues;
 }

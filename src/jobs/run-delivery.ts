@@ -153,6 +153,7 @@ export async function runDelivery(db: Db, deliveryId: string, deps: RunDeps): Pr
         })),
         approvedCrops: claimed.approvedCrops,
         approvedTrims: claimed.approvedTrims,
+        fields: claimed.fields,
       },
       capabilities,
       networkName(channel.network),

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import type { Capabilities } from "@/connectors/types";
+import type { Capabilities, FieldSpec } from "@/connectors/types";
 import type { CropRect, Network, TrimRange } from "@/db/schema";
 import { type DraftMedia, type Issue, canPublish, captionLength, checkPost, countChars } from "@/domain/checks";
 import { type ClientAsset, formatBytes, formatDuration, thumbUrl } from "@/media/client-asset";
@@ -71,6 +71,8 @@ export function Composer({
   const [crops, setCrops] = useState<Record<string, Record<string, CropRect>>>({});
   const [cropTarget, setCropTarget] = useState<CropTarget | null>(null);
   const [trims, setTrims] = useState<Record<string, Record<string, TrimRange>>>({});
+  // Values for each Channel's extra network fields, such as a YouTube title.
+  const [fieldValues, setFieldValues] = useState<Record<string, Record<string, string>>>({});
   const [trimTarget, setTrimTarget] = useState<TrimTarget | null>(null);
   const [when, setWhen] = useState<"now" | "later">("now");
   const [scheduleValue, setScheduleValue] = useState(defaultScheduleValue);
@@ -92,13 +94,14 @@ export function Composer({
           media: draftMedia,
           approvedCrops: crops[channel.id] ?? {},
           approvedTrims: trims[channel.id] ?? {},
+          fields: fieldValues[channel.id] ?? {},
         },
         channel.capabilities,
         channel.networkName,
       );
     }
     return result;
-  }, [brand, caption, overrides, draftMedia, crops, trims]);
+  }, [brand, caption, overrides, draftMedia, crops, trims, fieldValues]);
 
   const pickedChannels = brand.channels.filter((channel) => picked.includes(channel.id));
   // The main counter follows the picked Channel (using the main caption) with the least room left.
@@ -128,6 +131,7 @@ export function Composer({
     setOverrides({});
     setCrops({});
     setTrims({});
+    setFieldValues({});
   }
 
   function addMedia(asset: ClientAsset) {
@@ -156,6 +160,7 @@ export function Composer({
           captionOverride: overrides[channel.id] ?? null,
           approvedCrops: crops[channel.id] ?? {},
           approvedTrims: trims[channel.id] ?? {},
+          fields: fieldValues[channel.id] ?? {},
         })),
         scheduledFor: scheduledDate ? scheduledDate.toISOString() : null,
       });
@@ -375,6 +380,19 @@ export function Composer({
                           }}
                         />
                       ))}
+                      {(channel.capabilities?.fields ?? []).map((spec) => (
+                        <FieldInput
+                          key={spec.key}
+                          spec={spec}
+                          value={fieldValues[channel.id]?.[spec.key] ?? spec.defaultValue ?? ""}
+                          onChange={(value) =>
+                            setFieldValues((current) => ({
+                              ...current,
+                              [channel.id]: { ...current[channel.id], [spec.key]: value },
+                            }))
+                          }
+                        />
+                      ))}
                       {override == null ? (
                         <button
                           type="button"
@@ -500,6 +518,30 @@ export function Composer({
         />
       ) : null}
     </div>
+  );
+}
+
+/** One extra network field, such as a YouTube title or a Pinterest board. */
+function FieldInput({ spec, value, onChange }: { spec: FieldSpec; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="flex max-w-md flex-col gap-1 text-xs font-medium">
+      <span>
+        {spec.label}
+        {spec.required ? <span className="text-muted"> (required)</span> : null}
+      </span>
+      {spec.kind === "select" ? (
+        <select value={value} onChange={(event) => onChange(event.target.value)} className={inputClass}>
+          {spec.options?.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input value={value} onChange={(event) => onChange(event.target.value)} maxLength={spec.maxLength} className={inputClass} />
+      )}
+      {spec.help ? <span className="font-normal text-muted">{spec.help}</span> : null}
+    </label>
   );
 }
 

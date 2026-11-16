@@ -19,6 +19,8 @@ export type NewPost = {
     approvedCrops: Record<string, CropRect>;
     /** Video trims the Member approved, by asset ID. */
     approvedTrims?: Record<string, TrimRange>;
+    /** Values for the network's extra fields, such as a YouTube title. */
+    fields?: Record<string, string>;
   }[];
   /** Null publishes now. */
   scheduledFor: Date | null;
@@ -90,7 +92,7 @@ export async function createPost(db: Db, memberId: string, input: NewPost, now =
       problems.push(`Publishing to ${networkName(channel.network)} is not available yet.`);
     } else {
       const issues = checkPost(
-        { caption: override ?? caption, media, approvedCrops, approvedTrims },
+        { caption: override ?? caption, media, approvedCrops, approvedTrims, fields: delivery.fields ?? {} },
         connector.baseCapabilities,
         networkName(channel.network),
       );
@@ -107,6 +109,7 @@ export async function createPost(db: Db, memberId: string, input: NewPost, now =
       captionOverride: override !== null && override !== caption ? override : null,
       approvedCrops,
       approvedTrims,
+      fields: delivery.fields ?? {},
       scheduledFor: input.scheduledFor ?? now,
     };
   });

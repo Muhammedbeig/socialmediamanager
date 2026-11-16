@@ -25,8 +25,23 @@ export type VideoRules = {
   maxAspect?: number;
 };
 
+/** An extra field the composer asks for on one network, such as a YouTube title or a Pinterest board. */
+export type FieldSpec = {
+  key: string;
+  label: string;
+  kind: "text" | "select";
+  required?: boolean;
+  maxLength?: number;
+  options?: { value: string; label: string }[];
+  defaultValue?: string;
+  /** Shown under the field. */
+  help?: string;
+};
+
 export type Capabilities = {
   formats: PostFormat[];
+  /** Extra fields the composer shows for Channels on this network. */
+  fields?: FieldSpec[];
   caption: {
     maxChars: number;
     maxHashtags?: number;
