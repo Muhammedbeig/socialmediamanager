@@ -75,7 +75,8 @@ export function createFacebookLogin(options: {
 }
 
 export const facebookAuth = createFacebookLogin({
-  scopes: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement"],
+  // business_management: Pages owned by a business portfolio are only listed with it.
+  scopes: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "business_management"],
   pageFields: "id,name,access_token",
   toTargets: (page) => [
     { externalId: page.id, displayName: page.name, handle: null, accessToken: page.access_token, expiresAt: null },
