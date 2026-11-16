@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { needsReconnect } from "@/channels/connect";
 import { getConnector, networkName } from "@/connectors/registry";
 import { type Connector, ConnectorError, type ConnectorErrorKind, type PreparedMedia } from "@/connectors/types";
@@ -38,6 +38,22 @@ function describe(error: unknown): Failure {
 
 async function logEvent(db: Db, deliveryId: string, type: string, detail: Record<string, unknown> = {}) {
   await db.insert(deliveryEvents).values({ deliveryId, type, detail });
+}
+
+/** The media a Delivery sends: its own after a Replace that changed the media, else the Post's. */
+export async function deliveryMedia(db: Db, postId: string, mediaOverride: string[] | null) {
+  if (mediaOverride) {
+    if (mediaOverride.length === 0) return [];
+    const rows = await db.select().from(mediaAssets).where(inArray(mediaAssets.id, mediaOverride));
+    return mediaOverride.map((id) => rows.find((row) => row.id === id)).filter((row) => row !== undefined);
+  }
+  const rows = await db
+    .select({ asset: mediaAssets })
+    .from(postMedia)
+    .innerJoin(mediaAssets, eq(mediaAssets.id, postMedia.assetId))
+    .where(eq(postMedia.postId, postId))
+    .orderBy(asc(postMedia.position));
+  return rows.map((row) => row.asset);
 }
 
 /** The Deliveries that are due now: scheduled ones whose time has come, and retries whose wait is over. */
@@ -119,13 +135,7 @@ export async function runDelivery(db: Db, deliveryId: string, deps: RunDeps): Pr
     };
     const capabilities = await connector.capabilities(access);
 
-    const mediaRows = await db
-      .select({ asset: mediaAssets })
-      .from(postMedia)
-      .innerJoin(mediaAssets, eq(mediaAssets.id, postMedia.assetId))
-      .where(eq(postMedia.postId, post.id))
-      .orderBy(asc(postMedia.position));
-    const assets = mediaRows.map((row) => row.asset);
+    const assets = await deliveryMedia(db, post.id, claimed.mediaOverride);
     const caption = claimed.captionOverride ?? post.caption;
 
     // The network's rules may have changed since the Post was saved: check again.
@@ -142,6 +152,7 @@ export async function runDelivery(db: Db, deliveryId: string, deps: RunDeps): Pr
           durationMs: asset.durationMs,
         })),
         approvedCrops: claimed.approvedCrops,
+        approvedTrims: claimed.approvedTrims,
       },
       capabilities,
       networkName(channel.network),
@@ -156,7 +167,7 @@ export async function runDelivery(db: Db, deliveryId: string, deps: RunDeps): Pr
       const prepared =
         asset.kind === "image"
           ? await prepareImage(db, asset, capabilities.image!, claimed.approvedCrops[asset.id])
-          : await prepareVideo(db, asset, capabilities.video!);
+          : await prepareVideo(db, asset, capabilities.video!, claimed.approvedTrims[asset.id]);
       if (capabilities.fetchesMediaFromPublicUrl) {
         if (!deps.mediaHost) {
           throw new ConnectorError(

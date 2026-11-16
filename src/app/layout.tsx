@@ -1,20 +1,12 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+// DESIGN.md: the app UI uses Inter; code uses JetBrains Mono. Both are self-hosted from npm
+// packages, so the app and its build need no internet connection for fonts.
+import "@fontsource-variable/inter";
+import "@fontsource-variable/jetbrains-mono";
 import { getDb } from "@/db/client";
 import { unreadAlertCount } from "@/notify/queries";
 import { NavLink } from "@/ui/nav-link";
 import "./globals.css";
-
-// DESIGN.md: the app UI uses Inter; code uses JetBrains Mono.
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Social Publisher",
@@ -40,7 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
       <body className="flex min-h-full flex-col md:flex-row">
         {/* Below 768px the sidebar becomes a top bar with a scrolling row of links. */}
@@ -70,6 +62,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </NavLink>
             <NavLink href="/alerts" icon="attention" badge={unread} badgeLabel={`${unread} unread alerts`}>
               Alerts
+            </NavLink>
+            <NavLink href="/settings" icon="settings">
+              Settings
             </NavLink>
           </nav>
         </aside>

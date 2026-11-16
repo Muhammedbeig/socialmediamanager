@@ -2,6 +2,9 @@
 
 What the owner sets up once on the Windows 11 laptop. Run commands in PowerShell from the project folder.
 
+The app's **Settings** screen shows which of these steps are done, what is still missing, and
+has a button to test Cloudflare R2 end to end. After changing `.env.local`, restart the app.
+
 Secrets go only in `.env.local` (never committed, never pasted into chat). Start it from the template:
 
 ```powershell
@@ -142,6 +145,7 @@ npm run service:start      # start it now, hidden
 - The app is then at `APP_URL` (normally <http://localhost:3000>); only this laptop can reach it.
 - The log is `data\logs\service.log`.
 - Only one copy runs: if port 3000 is taken (for example by `npm run dev`), the service does not start.
+- Start at login can also be turned on and off on the Settings screen.
 - To stop it starting at login: `npm run service:uninstall`. To stop a running copy, end the
   `node.exe` process that runs `service\main.ts` in Task Manager, or restart Windows.
 - Desktop notifications use Windows' own notification system. If Focus Assist / Do Not Disturb is

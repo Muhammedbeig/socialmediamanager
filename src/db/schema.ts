@@ -62,6 +62,8 @@ export const brands = pgTable("brands", {
 });
 
 export type CropRect = { x: number; y: number; width: number; height: number };
+/** The part of a video that is kept, in milliseconds from the start. */
+export type TrimRange = { startMs: number; endMs: number };
 
 export const channels = pgTable(
   "channels",
@@ -184,6 +186,10 @@ export const deliveries = pgTable(
     fields: jsonb("fields").$type<Record<string, unknown>>().notNull().default({}),
     // Crops the Member approved in the preview, keyed by media asset ID.
     approvedCrops: jsonb("approved_crops").$type<Record<string, CropRect>>().notNull().default({}),
+    // Trims the Member approved in the preview, keyed by media asset ID.
+    approvedTrims: jsonb("approved_trims").$type<Record<string, TrimRange>>().notNull().default({}),
+    // Set by a Replace that changed the media: this Delivery's own media, in order, instead of the Post's.
+    mediaOverride: jsonb("media_override").$type<string[]>(),
     status: deliveryStatus("status").notNull().default("scheduled"),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }),

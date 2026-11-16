@@ -15,6 +15,13 @@
       "when": 1794408292610,
       "tag": "0001_delivery_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794461039092,
+      "tag": "0002_trims_and_media_override",
+      "breakpoints": true
     }
   ]
 }

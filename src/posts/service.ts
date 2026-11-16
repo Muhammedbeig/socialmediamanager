@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { needsReconnect } from "@/channels/connect";
 import { getConnector, networkName } from "@/connectors/registry";
 import type { Db } from "@/db/client";
-import { type CropRect, brands, channels, deliveries, mediaAssets, postMedia, posts } from "@/db/schema";
+import { type CropRect, type TrimRange, brands, channels, deliveries, mediaAssets, postMedia, posts } from "@/db/schema";
 import { type DraftMedia, canPublish, checkPost } from "@/domain/checks";
 import { UserError } from "@/domain/errors";
 import { type PostStatus, computePostStatus } from "@/domain/post-status";
@@ -17,6 +17,8 @@ export type NewPost = {
     channelId: string;
     captionOverride: string | null;
     approvedCrops: Record<string, CropRect>;
+    /** Video trims the Member approved, by asset ID. */
+    approvedTrims?: Record<string, TrimRange>;
   }[];
   /** Null publishes now. */
   scheduledFor: Date | null;
@@ -78,6 +80,9 @@ export async function createPost(db: Db, memberId: string, input: NewPost, now =
     const approvedCrops = Object.fromEntries(
       Object.entries(delivery.approvedCrops).filter(([assetId]) => input.assetIds.includes(assetId)),
     );
+    const approvedTrims = Object.fromEntries(
+      Object.entries(delivery.approvedTrims ?? {}).filter(([assetId]) => input.assetIds.includes(assetId)),
+    );
 
     if (needsReconnect(channel, now)) {
       problems.push(`${label} needs reconnecting first.`);
@@ -85,7 +90,7 @@ export async function createPost(db: Db, memberId: string, input: NewPost, now =
       problems.push(`Publishing to ${networkName(channel.network)} is not available yet.`);
     } else {
       const issues = checkPost(
-        { caption: override ?? caption, media, approvedCrops },
+        { caption: override ?? caption, media, approvedCrops, approvedTrims },
         connector.baseCapabilities,
         networkName(channel.network),
       );
@@ -93,6 +98,7 @@ export async function createPost(db: Db, memberId: string, input: NewPost, now =
         for (const issue of issues) {
           if (issue.kind === "block") problems.push(`${label}: ${issue.message}`);
           if (issue.kind === "crop" && !issue.approved) problems.push(`${label}: approve the crop first.`);
+          if (issue.kind === "trim" && !issue.approved) problems.push(`${label}: approve the trim first.`);
         }
       }
     }
@@ -100,6 +106,7 @@ export async function createPost(db: Db, memberId: string, input: NewPost, now =
       channelId: channel.id,
       captionOverride: override !== null && override !== caption ? override : null,
       approvedCrops,
+      approvedTrims,
       scheduledFor: input.scheduledFor ?? now,
     };
   });
@@ -136,13 +143,14 @@ export type PostSummary = {
 };
 
 /** Posts, newest first, each with its computed Post status. */
-export async function listPosts(db: Db, limit = 100): Promise<PostSummary[]> {
+export async function listPosts(db: Db, limit = 100, offset = 0): Promise<PostSummary[]> {
   const postRows = await db
     .select({ post: posts, brandName: brands.name })
     .from(posts)
     .innerJoin(brands, eq(posts.brandId, brands.id))
-    .orderBy(desc(posts.createdAt))
-    .limit(limit);
+    .orderBy(desc(posts.createdAt), desc(posts.id))
+    .limit(limit)
+    .offset(offset);
   if (postRows.length === 0) return [];
   const postIds = postRows.map((row) => row.post.id);
 

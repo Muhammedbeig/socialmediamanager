@@ -4,17 +4,21 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { Capabilities } from "@/connectors/types";
 import type { DeliveryStatus } from "@/db/schema";
-import { captionLength } from "@/domain/checks";
 import type { RemovalReport } from "@/deliveries/manage";
+import { captionLength } from "@/domain/checks";
+import { type ClientAsset, thumbUrl } from "@/media/client-asset";
 import { Dialog } from "@/ui/dialog";
+import { MediaDropzone } from "@/ui/media-dropzone";
 import { Notice, buttonClass, textareaClass } from "@/ui/primitives";
-import { type ActionResult, editAction, removeAction, replaceAction, retryAction } from "./actions";
+import { type ActionResult, editAction, listLibraryAction, removeAction, replaceAction, retryAction } from "./actions";
 
 type DeliveryView = {
   id: string;
   status: DeliveryStatus;
   channel: string;
   text: string;
+  /** The media this Delivery sent. */
+  media: ClientAsset[];
   canEdit: boolean;
   editNote: string;
   removalNote: string;
@@ -36,11 +40,13 @@ export function DeliveryActions({ postId, delivery }: { postId: string; delivery
     });
   };
 
+  const live = delivery.status === "published";
+  const cancellable = delivery.status === "scheduled" || delivery.status === "failed";
   const removal = {
     id: delivery.id,
     channel: delivery.channel,
-    live: delivery.status === "published",
-    note: delivery.status === "published" ? delivery.removalNote : "Not live yet: it will be cancelled.",
+    live,
+    note: live ? delivery.removalNote : "Not live yet: it will be cancelled.",
   };
 
   return (
@@ -51,24 +57,24 @@ export function DeliveryActions({ postId, delivery }: { postId: string; delivery
             Retry
           </button>
         ) : null}
-        {delivery.status === "published" ? (
-          <button
-            type="button"
-            className={buttonClass.smallSecondary}
-            disabled={pending}
-            onClick={() => setTextMode(delivery.canEdit ? "edit" : "replace")}
-          >
-            {delivery.canEdit ? "Edit" : "Replace…"}
+        {live && delivery.canEdit ? (
+          <button type="button" className={buttonClass.smallSecondary} disabled={pending} onClick={() => setTextMode("edit")}>
+            Edit
           </button>
         ) : null}
-        {delivery.status === "published" || delivery.status === "scheduled" || delivery.status === "failed" ? (
-          <RemoveDialogButton
-            postId={postId}
-            deliveries={[removal]}
-            label={delivery.status === "published" ? "Remove…" : "Cancel…"}
-            small
-          />
+        {live ? (
+          // Replace is offered everywhere: it is how media changes, and the only change where Edit is not possible.
+          <button type="button" className={buttonClass.smallSecondary} disabled={pending} onClick={() => setTextMode("replace")}>
+            Replace…
+          </button>
         ) : null}
+        <RemoveDialogButton
+          postId={postId}
+          deliveries={[removal]}
+          label={live ? "Remove…" : "Cancel…"}
+          hidden={!live && !cancellable}
+          small
+        />
       </div>
       {error ? <p className="max-w-64 text-right text-xs text-danger">{error}</p> : null}
 
@@ -77,9 +83,11 @@ export function DeliveryActions({ postId, delivery }: { postId: string; delivery
           mode={textMode}
           delivery={delivery}
           onClose={() => setTextMode(null)}
-          onSubmit={async (text) => {
+          onSubmit={async (text, mediaIds) => {
             const result =
-              textMode === "edit" ? await editAction(postId, delivery.id, text) : await replaceAction(postId, delivery.id, text);
+              textMode === "edit"
+                ? await editAction(postId, delivery.id, text)
+                : await replaceAction(postId, delivery.id, text, mediaIds);
             if (result.ok) {
               setTextMode(null);
               router.refresh();
@@ -101,23 +109,39 @@ function TextDialog({
   mode: "edit" | "replace";
   delivery: DeliveryView;
   onClose: () => void;
-  onSubmit: (text: string) => Promise<ActionResult>;
+  onSubmit: (text: string, mediaIds: string[] | null) => Promise<ActionResult>;
 }) {
   const [text, setText] = useState(delivery.text);
+  // Null keeps the media this Delivery already has.
+  const [media, setMedia] = useState<ClientAsset[] | null>(null);
+  const [library, setLibrary] = useState<ClientAsset[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const rules = delivery.captionRules;
   const length = rules ? captionLength(text, rules) : text.length;
   const tooLong = rules ? length > rules.maxChars : false;
+  const shown = media ?? delivery.media;
+  const empty = text.trim().length === 0 && shown.length === 0;
+
+  const changeMedia = () => {
+    setMedia(delivery.media);
+    if (!library) void listLibraryAction().then(setLibrary);
+  };
+  const toggle = (asset: ClientAsset) =>
+    setMedia((current) => {
+      const list = current ?? [];
+      return list.some((a) => a.id === asset.id) ? list.filter((a) => a.id !== asset.id) : [...list, asset];
+    });
 
   return (
     <Dialog
       title={mode === "edit" ? `Edit text on ${delivery.channel}` : `Replace on ${delivery.channel}?`}
       description={
         mode === "edit"
-          ? "The text changes in place on the network. Media cannot change."
-          : `${delivery.editNote} Replace removes the live post and publishes a new one with this text.`
+          ? "The text changes in place on the network. To change the media, use Replace."
+          : `${delivery.canEdit ? "" : `${delivery.editNote} `}Replace removes the live post and publishes a new one with this text and media.`
       }
+      width={mode === "replace" ? 768 : 512}
       onClose={onClose}
       footer={
         <>
@@ -127,11 +151,11 @@ function TextDialog({
           <button
             type="button"
             className={mode === "edit" ? buttonClass.primary : buttonClass.dangerFill}
-            disabled={pending || tooLong || text.trim().length === 0 || (mode === "edit" && text === delivery.text)}
+            disabled={pending || tooLong || empty || (mode === "edit" && text === delivery.text)}
             onClick={() =>
               startTransition(async () => {
                 setError(null);
-                const result = await onSubmit(text);
+                const result = await onSubmit(text, media ? media.map((a) => a.id) : null);
                 if (!result.ok) setError(result.error);
               })
             }
@@ -150,11 +174,74 @@ function TextDialog({
             </span>
           ) : null}
         </span>
-        <textarea value={text} onChange={(event) => setText(event.target.value)} rows={7} className={textareaClass} />
+        <textarea value={text} onChange={(event) => setText(event.target.value)} rows={6} className={textareaClass} />
       </label>
+
       {mode === "replace" ? (
-        <p className="mt-3 text-xs text-muted">Likes and comments on the old post are lost.</p>
+        <div className="mt-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium">Media{media ? " (new)" : ""}</p>
+            {media ? (
+              <button type="button" className={buttonClass.smallSecondary} onClick={() => setMedia(null)}>
+                Keep current media
+              </button>
+            ) : (
+              <button type="button" className={buttonClass.smallSecondary} onClick={changeMedia}>
+                Change media
+              </button>
+            )}
+          </div>
+          {shown.length > 0 ? (
+            <ol className="mt-2 flex flex-wrap gap-2" aria-label="Media in order">
+              {shown.map((asset, index) => (
+                <li key={asset.id} className="relative size-16 overflow-hidden rounded-md border border-border bg-hover">
+                  <img src={thumbUrl(asset.id)} alt={asset.name} className="size-full object-cover" />
+                  <span className="absolute top-0.5 left-0.5 rounded-sm bg-black/70 px-1 text-xs text-white">{index + 1}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-2 text-xs text-muted">No media: a text-only post.</p>
+          )}
+
+          {media ? (
+            <div className="mt-3 flex flex-col gap-3">
+              <p className="text-xs text-muted">Click files to add or take them out; they go in the order you click.</p>
+              <MediaDropzone
+                compact
+                onUploaded={(asset) => {
+                  setLibrary((current) => [asset, ...(current ?? []).filter((a) => a.id !== asset.id)]);
+                  setMedia((current) => [...(current ?? []).filter((a) => a.id !== asset.id), asset]);
+                }}
+              />
+              {library === null ? (
+                <p className="text-xs text-muted">Loading the media library…</p>
+              ) : (
+                <ul className="grid max-h-56 grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-2 overflow-y-auto" aria-label="Media library">
+                  {library.map((asset) => {
+                    const chosen = media.some((a) => a.id === asset.id);
+                    return (
+                      <li key={asset.id}>
+                        <button
+                          type="button"
+                          aria-pressed={chosen}
+                          title={asset.name}
+                          onClick={() => toggle(asset)}
+                          className={`block aspect-square w-full overflow-hidden rounded-md border-2 ${chosen ? "border-parrot" : "border-transparent hover:border-input"}`}
+                        >
+                          <img src={thumbUrl(asset.id)} alt={asset.name} className="size-full object-cover" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          ) : null}
+          <p className="mt-3 text-xs text-muted">Likes and comments on the old post are lost.</p>
+        </div>
       ) : null}
+
       {error ? (
         <div className="mt-3">
           <Notice tone="error">{error}</Notice>
@@ -172,11 +259,14 @@ export function RemoveDialogButton({
   deliveries,
   label,
   small = false,
+  hidden = false,
 }: {
   postId: string;
   deliveries: RemovalTarget[];
   label: string;
   small?: boolean;
+  /** Hides the button but stays mounted, so an open report survives the Delivery being removed. */
+  hidden?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -194,9 +284,11 @@ export function RemoveDialogButton({
 
   return (
     <>
-      <button type="button" className={small ? buttonClass.smallDanger : buttonClass.danger} onClick={() => setOpen(true)}>
-        {label}
-      </button>
+      {hidden ? null : (
+        <button type="button" className={small ? buttonClass.smallDanger : buttonClass.danger} onClick={() => setOpen(true)}>
+          {label}
+        </button>
+      )}
       {open ? (
         <Dialog
           title={single ? `${deliveries[0].live ? "Remove from" : "Cancel for"} ${deliveries[0].channel}?` : "Remove this Post"}

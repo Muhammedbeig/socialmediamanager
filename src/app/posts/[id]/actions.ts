@@ -5,6 +5,8 @@ import { getDb } from "@/db/client";
 import { type RemovalReport, editDelivery, removeDeliveries, replaceDelivery } from "@/deliveries/manage";
 import { UserError } from "@/domain/errors";
 import { retryDelivery } from "@/jobs/run-delivery";
+import { type ClientAsset, toClientAsset } from "@/media/client-asset";
+import { listAssets } from "@/media/library";
 import { desktopNotifier } from "@/notify/desktop";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -35,16 +37,27 @@ export async function editAction(postId: string, deliveryId: string, text: strin
   });
 }
 
-export async function replaceAction(postId: string, deliveryId: string, text: string): Promise<ActionResult> {
+export async function replaceAction(
+  postId: string,
+  deliveryId: string,
+  text: string,
+  mediaIds: string[] | null,
+): Promise<ActionResult> {
   return attempt(postId, async () => {
-    await replaceDelivery(getDb(), deliveryId, text);
+    await replaceDelivery(getDb(), deliveryId, text, { mediaIds });
     return "The old post was removed. The new one is being published.";
   });
 }
 
-export async function removeAction(postId: string, deliveryIds: string[]): Promise<RemovalReport[]> {
-  const reports = await removeDeliveries(getDb(), deliveryIds, { desktop: desktopNotifier() });
-  revalidatePath(`/posts/${postId}`);
-  revalidatePath("/posts");
-  return reports;
+/**
+ * Removal reports each Channel's result. The screen refreshes when the Member closes the report,
+ * so the report stays on screen even when the last Delivery is removed.
+ */
+export async function removeAction(_postId: string, deliveryIds: string[]): Promise<RemovalReport[]> {
+  return removeDeliveries(getDb(), deliveryIds, { desktop: desktopNotifier() });
+}
+
+/** The media library, for choosing new media in a Replace. */
+export async function listLibraryAction(): Promise<ClientAsset[]> {
+  return (await listAssets(getDb())).map(toClientAsset);
 }

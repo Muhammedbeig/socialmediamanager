@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getDb } from "@/db/client";
 import { listAssets } from "@/media/library";
 import { formatBytes, formatDuration, thumbUrl } from "@/media/client-asset";
@@ -6,12 +7,19 @@ import { FlashMessages, PageHeader, buttonClass } from "@/ui/primitives";
 import { deleteAssetAction } from "./actions";
 import { LibraryUpload } from "./library-upload";
 
+const STEP = 120;
+
 export default async function MediaPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [query, assets] = await Promise.all([searchParams, listAssets(getDb())]);
+  const query = await searchParams;
+  const shown = Math.min(5000, Math.max(STEP, Number(typeof query.show === "string" ? query.show : STEP) || STEP));
+  // One extra row tells whether there are more to show.
+  const rows = await listAssets(getDb(), shown + 1);
+  const assets = rows.slice(0, shown);
+  const hasMore = rows.length > shown;
 
   return (
     <>
@@ -59,6 +67,13 @@ export default async function MediaPage({
             ))}
         </ul>
       )}
+      {hasMore ? (
+        <div className="mt-4 flex justify-center">
+          <Link href={`/media?show=${shown + STEP}`} className={buttonClass.secondary} scroll={false}>
+            Show more
+          </Link>
+        </div>
+      ) : null}
     </>
   );
 }

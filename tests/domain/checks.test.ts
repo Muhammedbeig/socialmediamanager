@@ -143,6 +143,20 @@ describe("checkPost", () => {
     expect(check(draft({ media: [video({ width: 1920, height: 1080 })] }), caps)[0].kind).toBe("block");
   });
 
+  it("asks for an approved trim when a video is too long, and never cuts silently", () => {
+    const long = video({ durationMs: 90_000 });
+    const issues = check(draft({ media: [long] }));
+    expect(issues[0]).toMatchObject({ kind: "trim", approved: false, maxSeconds: 60, minSeconds: 3 });
+    expect(canPublish(issues)).toBe(false);
+
+    const ok = check(draft({ media: [long], approvedTrims: { "vid-1": { startMs: 10_000, endMs: 70_000 } } }));
+    expect(ok[0]).toMatchObject({ kind: "trim", approved: true });
+    expect(canPublish(ok)).toBe(true);
+
+    const stillLong = check(draft({ media: [long], approvedTrims: { "vid-1": { startMs: 0, endMs: 80_000 } } }));
+    expect(stillLong[0]).toMatchObject({ kind: "trim", approved: false });
+  });
+
   it("converts a video in the wrong container automatically", () => {
     const issues = check(draft({ media: [video({ mimeType: "video/quicktime" })] }));
     expect(issues).toEqual([{ kind: "convert", assetId: "vid-1", message: "Will be converted to MP4 for Testnet." }]);

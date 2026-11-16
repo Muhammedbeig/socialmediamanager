@@ -3,13 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import type { Capabilities } from "@/connectors/types";
-import type { CropRect, Network } from "@/db/schema";
+import type { CropRect, Network, TrimRange } from "@/db/schema";
 import { type DraftMedia, type Issue, canPublish, captionLength, checkPost, countChars } from "@/domain/checks";
 import { type ClientAsset, formatBytes, formatDuration, thumbUrl } from "@/media/client-asset";
 import { MediaDropzone } from "@/ui/media-dropzone";
 import { Notice, Panel, PanelHeading, buttonClass, inputClass, labelClass, textareaClass } from "@/ui/primitives";
 import { createPostAction } from "./actions";
 import { CropDialog } from "./crop-dialog";
+import { TrimDialog } from "./trim-dialog";
 
 export type ComposerChannel = {
   id: string;
@@ -25,6 +26,7 @@ export type ComposerChannel = {
 export type ComposerBrand = { id: string; name: string; channels: ComposerChannel[] };
 
 type CropTarget = { channelId: string; asset: ClientAsset; network: string; minAspect: number; maxAspect: number };
+type TrimTarget = { channelId: string; asset: ClientAsset; network: string; minSeconds: number; maxSeconds: number };
 
 /** A datetime-local value in the laptop's time zone, one hour from now, to the minute. */
 function defaultScheduleValue(): string {
@@ -68,6 +70,8 @@ export function Composer({
   const [overrides, setOverrides] = useState<Record<string, string | null>>({});
   const [crops, setCrops] = useState<Record<string, Record<string, CropRect>>>({});
   const [cropTarget, setCropTarget] = useState<CropTarget | null>(null);
+  const [trims, setTrims] = useState<Record<string, Record<string, TrimRange>>>({});
+  const [trimTarget, setTrimTarget] = useState<TrimTarget | null>(null);
   const [when, setWhen] = useState<"now" | "later">("now");
   const [scheduleValue, setScheduleValue] = useState(defaultScheduleValue);
   const [error, setError] = useState<string | null>(null);
@@ -83,13 +87,18 @@ export function Composer({
     for (const channel of brand.channels) {
       if (!channel.capabilities) continue;
       result[channel.id] = checkPost(
-        { caption: overrides[channel.id] ?? caption, media: draftMedia, approvedCrops: crops[channel.id] ?? {} },
+        {
+          caption: overrides[channel.id] ?? caption,
+          media: draftMedia,
+          approvedCrops: crops[channel.id] ?? {},
+          approvedTrims: trims[channel.id] ?? {},
+        },
         channel.capabilities,
         channel.networkName,
       );
     }
     return result;
-  }, [brand, caption, overrides, draftMedia, crops]);
+  }, [brand, caption, overrides, draftMedia, crops, trims]);
 
   const pickedChannels = brand.channels.filter((channel) => picked.includes(channel.id));
   // The main counter follows the picked Channel (using the main caption) with the least room left.
@@ -118,6 +127,7 @@ export function Composer({
     setPicked([]);
     setOverrides({});
     setCrops({});
+    setTrims({});
   }
 
   function addMedia(asset: ClientAsset) {
@@ -145,6 +155,7 @@ export function Composer({
           channelId: channel.id,
           captionOverride: overrides[channel.id] ?? null,
           approvedCrops: crops[channel.id] ?? {},
+          approvedTrims: trims[channel.id] ?? {},
         })),
         scheduledFor: scheduledDate ? scheduledDate.toISOString() : null,
       });
@@ -341,22 +352,27 @@ export function Composer({
                         <IssueRow
                           key={`${issue.kind}-${issue.assetId ?? ""}-${index}`}
                           issue={issue}
-                          onCrop={
-                            issue.kind === "crop"
-                              ? () => {
-                                  const asset = media.find((a) => a.id === issue.assetId);
-                                  if (asset) {
-                                    setCropTarget({
-                                      channelId: channel.id,
-                                      asset,
-                                      network: channel.networkName,
-                                      minAspect: issue.minAspect,
-                                      maxAspect: issue.maxAspect,
-                                    });
-                                  }
-                                }
-                              : undefined
-                          }
+                          onPreview={() => {
+                            const asset = media.find((a) => a.id === issue.assetId);
+                            if (!asset) return;
+                            if (issue.kind === "crop") {
+                              setCropTarget({
+                                channelId: channel.id,
+                                asset,
+                                network: channel.networkName,
+                                minAspect: issue.minAspect,
+                                maxAspect: issue.maxAspect,
+                              });
+                            } else if (issue.kind === "trim") {
+                              setTrimTarget({
+                                channelId: channel.id,
+                                asset,
+                                network: channel.networkName,
+                                minSeconds: issue.minSeconds,
+                                maxSeconds: issue.maxSeconds,
+                              });
+                            }
+                          }}
                         />
                       ))}
                       {override == null ? (
@@ -464,18 +480,38 @@ export function Composer({
           }}
         />
       ) : null}
+
+      {trimTarget ? (
+        <TrimDialog
+          key={`${trimTarget.channelId}-${trimTarget.asset.id}`}
+          asset={trimTarget.asset}
+          network={trimTarget.network}
+          minSeconds={trimTarget.minSeconds}
+          maxSeconds={trimTarget.maxSeconds}
+          initial={trims[trimTarget.channelId]?.[trimTarget.asset.id]}
+          onClose={() => setTrimTarget(null)}
+          onApprove={(trim) => {
+            setTrims((current) => ({
+              ...current,
+              [trimTarget.channelId]: { ...current[trimTarget.channelId], [trimTarget.asset.id]: trim },
+            }));
+            setTrimTarget(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function IssueRow({ issue, onCrop }: { issue: Issue; onCrop?: () => void }) {
-  if (issue.kind === "crop") {
+function IssueRow({ issue, onPreview }: { issue: Issue; onPreview: () => void }) {
+  if (issue.kind === "crop" || issue.kind === "trim") {
+    const noun = issue.kind === "crop" ? "crop" : "trim";
     return (
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span aria-hidden className={`size-1.5 rounded-full ${issue.approved ? "bg-parrot" : "bg-warning"}`} />
-        <span>{issue.approved ? "Crop approved." : issue.message}</span>
-        <button type="button" className={buttonClass.smallSecondary} onClick={onCrop}>
-          {issue.approved ? "Change crop" : "Preview crop"}
+        <span>{issue.approved ? `${noun === "crop" ? "Crop" : "Trim"} approved.` : issue.message}</span>
+        <button type="button" className={buttonClass.smallSecondary} onClick={onPreview}>
+          {issue.approved ? `Change ${noun}` : `Preview ${noun}`}
         </button>
       </div>
     );

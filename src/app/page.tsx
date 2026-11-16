@@ -4,19 +4,39 @@ import { needsReconnect } from "@/channels/connect";
 import { networkName } from "@/connectors/registry";
 import { getDb } from "@/db/client";
 import { dashboardData, unreadAlertCount } from "@/notify/queries";
+import { calendarMonth, monthStart } from "@/posts/calendar";
+import { setupStatus } from "@/settings/status";
+import { Calendar } from "./calendar";
 import { Notice, PageHeader, Panel, PanelHeading, buttonClass } from "@/ui/primitives";
 
 const when = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-function loadDashboard(now = new Date()) {
+function loadDashboard(month: string | undefined, now = new Date()) {
   const db = getDb();
-  return Promise.all([listBrandsWithChannels(db), dashboardData(db, now), unreadAlertCount(db)]);
+  const start = monthStart(month, now);
+  return Promise.all([
+    listBrandsWithChannels(db),
+    dashboardData(db, now),
+    unreadAlertCount(db),
+    setupStatus(db, now),
+    calendarMonth(db, start),
+    Promise.resolve({ start, now }),
+  ]);
 }
 
-export default async function DashboardPage() {
-  const [brands, { upcoming, failures }, unread] = await loadDashboard();
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const query = await searchParams;
+  const [brands, { upcoming, failures }, unread, setup, days, { start, now }] = await loadDashboard(
+    typeof query.month === "string" ? query.month : undefined,
+  );
   const channels = brands.flatMap((brand) => brand.channels);
   const reconnectCount = channels.filter((channel) => needsReconnect(channel)).length;
+  const workerDown = setup.find((item) => item.id === "worker")?.ok === false;
+  const setupMissing = setup.filter((item) => !item.optional && !item.ok && item.id !== "worker").length;
 
   const metrics = [
     { label: "Coming up (7 days)", value: upcoming.length, href: "/posts" },
@@ -32,6 +52,22 @@ export default async function DashboardPage() {
           Compose
         </Link>
       </PageHeader>
+      {workerDown ? (
+        <Notice tone="error">
+          The publisher is not running, so nothing goes out. Start it with npm run service:start (or npm run dev).{" "}
+          <Link href="/settings" className="font-medium underline">
+            Open Settings
+          </Link>
+        </Notice>
+      ) : null}
+      {setupMissing > 0 ? (
+        <Notice tone="warning">
+          Setup is not finished: {setupMissing} required {setupMissing === 1 ? "item needs" : "items need"} attention.{" "}
+          <Link href="/settings" className="font-medium underline">
+            Open Settings
+          </Link>
+        </Notice>
+      ) : null}
       {reconnectCount > 0 ? (
         <Notice tone="warning">
           {reconnectCount === 1 ? "1 Channel needs" : `${reconnectCount} Channels need`} reconnecting.{" "}
@@ -53,6 +89,8 @@ export default async function DashboardPage() {
           </Link>
         ))}
       </Panel>
+
+      <Calendar start={start} days={days} today={now} />
 
       {brands.length === 0 ? (
         <p className="text-base text-muted">

@@ -16,12 +16,19 @@ const STATUS_TONE: Record<PostStatus, "ok" | "warn" | "danger" | "neutral"> = {
   removed: "neutral",
 };
 
+const PAGE_SIZE = 50;
+
 export default async function PostsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [query, posts] = await Promise.all([searchParams, listPosts(getDb())]);
+  const query = await searchParams;
+  const page = Math.max(1, Number(typeof query.page === "string" ? query.page : 1) || 1);
+  // One extra row tells whether there is an older page.
+  const rows = await listPosts(getDb(), PAGE_SIZE + 1, (page - 1) * PAGE_SIZE);
+  const posts = rows.slice(0, PAGE_SIZE);
+  const hasOlder = rows.length > PAGE_SIZE;
 
   return (
     <>
@@ -76,6 +83,25 @@ export default async function PostsPage({
           </ul>
         </Panel>
       )}
+      {page > 1 || hasOlder ? (
+        <nav aria-label="Pages" className="mt-4 flex items-center justify-between">
+          {page > 1 ? (
+            <Link href={page === 2 ? "/posts" : `/posts?page=${page - 1}`} className={buttonClass.secondary}>
+              ← Newer
+            </Link>
+          ) : (
+            <span />
+          )}
+          <span className="text-sm text-muted tabular-nums">Page {page}</span>
+          {hasOlder ? (
+            <Link href={`/posts?page=${page + 1}`} className={buttonClass.secondary}>
+              Older →
+            </Link>
+          ) : (
+            <span />
+          )}
+        </nav>
+      ) : null}
     </>
   );
 }

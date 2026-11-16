@@ -4,7 +4,7 @@ import path from "node:path";
 import { and, eq } from "drizzle-orm";
 import type { ImageRules, PreparedMedia, VideoRules } from "@/connectors/types";
 import type { Db } from "@/db/client";
-import { type CropRect, mediaVariants } from "@/db/schema";
+import { type CropRect, type TrimRange, mediaVariants } from "@/db/schema";
 import { dataPath, ffmpeg } from "./ffmpeg";
 import { type MediaAsset, originalPath } from "./library";
 import { probeFile } from "./probe";
@@ -130,10 +130,16 @@ export async function prepareImage(
   throw new Error(`Could not make "${asset.originalName}" small enough for this network.`);
 }
 
-export async function prepareVideo(db: Db, asset: MediaAsset, rules: VideoRules): Promise<PreparedMedia> {
-  if (rules.mimeTypes.includes(asset.mimeType) && asset.sizeBytes <= rules.maxBytes) return asPrepared(asset);
+export async function prepareVideo(
+  db: Db,
+  asset: MediaAsset,
+  rules: VideoRules,
+  trim?: TrimRange,
+): Promise<PreparedMedia> {
+  if (!trim && rules.mimeTypes.includes(asset.mimeType) && asset.sizeBytes <= rules.maxBytes) return asPrepared(asset);
 
-  const spec = `video/mp4|max${rules.maxBytes}`;
+  const trimSpec = trim ? `trim:${trim.startMs}-${trim.endMs}` : "notrim";
+  const spec = `video/mp4|max${rules.maxBytes}|${trimSpec}`;
   const existing = await findVariant(db, asset.id, spec);
   if (existing) {
     return {
@@ -149,7 +155,10 @@ export async function prepareVideo(db: Db, asset: MediaAsset, rules: VideoRules)
   const relative = variantFile(asset, spec, ".mp4");
   const output = dataPath(relative);
   await mkdir(path.dirname(output), { recursive: true });
+  // An approved trim: seek to the start and stop at the end (re-encoded, so the cut is exact).
+  const cut = trim ? ["-ss", (trim.startMs / 1000).toFixed(3), "-to", (trim.endMs / 1000).toFixed(3)] : [];
   const common = [
+    ...cut,
     "-i", originalPath(asset),
     "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p",
     "-vf", "scale='trunc(iw/2)*2':'trunc(ih/2)*2'",
@@ -160,7 +169,8 @@ export async function prepareVideo(db: Db, asset: MediaAsset, rules: VideoRules)
   // First a visually clean encode. If that is still too big, aim the bitrate at the limit.
   await ffmpeg([...common, "-crf", "23", output]);
   if ((await stat(output)).size > rules.maxBytes) {
-    const seconds = Math.max(1, (asset.durationMs ?? 1000) / 1000);
+    const keptMs = trim ? trim.endMs - trim.startMs : (asset.durationMs ?? 1000);
+    const seconds = Math.max(1, keptMs / 1000);
     const videoKbps = Math.floor((rules.maxBytes * 8 * 0.92) / seconds / 1000) - AUDIO_KBPS;
     if (videoKbps < 150) {
       await rm(output, { force: true });

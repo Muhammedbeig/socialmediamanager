@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { fakeNetwork } from "@/connectors/fake";
 import type { Db } from "@/db/client";
-import { deliveries, notifications } from "@/db/schema";
+import { deliveries, mediaAssets, notifications } from "@/db/schema";
 import { editDelivery, loadPostDetail, removeDeliveries, replaceDelivery } from "@/deliveries/manage";
 import { UserError } from "@/domain/errors";
 import { runDelivery } from "@/jobs/run-delivery";
@@ -115,7 +115,7 @@ describe("Removal", () => {
 describe("Replace", () => {
   it("removes the live Delivery and queues a new one with the new text", async () => {
     const { post, delivery } = await livePost();
-    const replacementId = await replaceDelivery(db, delivery.id, "Brand new text", T0);
+    const replacementId = await replaceDelivery(db, delivery.id, "Brand new text", { now: T0 });
 
     const old = await row(delivery.id);
     expect(old).toMatchObject({ status: "removed", superseded: true });
@@ -129,6 +129,49 @@ describe("Replace", () => {
     expect(detail!.deliveries).toHaveLength(1);
     expect(detail!.deliveries[0]).toMatchObject({ id: replacementId, replaced: true });
     expect(detail!.status).toBe("published");
+  });
+
+  it("can change the media, for that Channel only", async () => {
+    const { post, delivery } = await livePost();
+    const [asset] = await db
+      .insert(mediaAssets)
+      .values({
+        kind: "image",
+        originalName: "new.jpg",
+        path: "originals/new.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 1000,
+        width: 1000,
+        height: 1000,
+        sha256: "new",
+      })
+      .returning();
+
+    const replacementId = await replaceDelivery(db, delivery.id, "New photo", { mediaIds: [asset.id], now: T0 });
+    expect((await row(replacementId)).mediaOverride).toEqual([asset.id]);
+    const detail = await loadPostDetail(db, post.id);
+    expect(detail!.deliveries[0].ownMedia?.map((m) => m.id)).toEqual([asset.id]);
+    // The Post itself keeps its own (here: no) media.
+    expect(detail!.media).toEqual([]);
+  });
+
+  it("refuses new media that would need a crop it cannot approve", async () => {
+    const { delivery } = await livePost();
+    const [tall] = await db
+      .insert(mediaAssets)
+      .values({
+        kind: "image",
+        originalName: "tall.jpg",
+        path: "originals/tall.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 1000,
+        width: 1000,
+        height: 3000,
+        sha256: "tall",
+      })
+      .returning();
+    await expect(replaceDelivery(db, delivery.id, "x", { mediaIds: [tall.id] })).rejects.toThrow(/needs a crop.*Duplicate/);
+    expect((await row(delivery.id)).status).toBe("published");
   });
 
   it("replaces nothing when the old post cannot be removed", async () => {

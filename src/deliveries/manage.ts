@@ -17,6 +17,7 @@ import { checkPost } from "@/domain/checks";
 import { UserError } from "@/domain/errors";
 import { computePostStatus } from "@/domain/post-status";
 import { type DesktopNotifier, raiseAlert } from "@/notify";
+import { deliveryMedia } from "@/jobs/run-delivery";
 import { decryptToken } from "@/secrets/tokens";
 
 // What happens to a Post after it is saved: Edit, Replace, Removal and Retry, each per Delivery.
@@ -76,17 +77,24 @@ async function unlock(db: Db, deliveryId: string) {
   await db.update(deliveries).set({ inFlightSince: null }).where(eq(deliveries.id, deliveryId));
 }
 
-async function captionProblems(db: Db, delivery: DeliveryRow, channel: ChannelRow, text: string, capabilities: Capabilities) {
-  const media = await db
-    .select({ asset: mediaAssets })
-    .from(postMedia)
-    .innerJoin(mediaAssets, eq(mediaAssets.id, postMedia.assetId))
-    .where(eq(postMedia.postId, delivery.postId))
-    .orderBy(asc(postMedia.position));
+/**
+ * What stops this text (and, for a Replace, this media) going to the Channel. Media that would
+ * need a crop or trim cannot be approved here, so it is refused with a way forward.
+ */
+async function problemsFor(
+  db: Db,
+  delivery: DeliveryRow,
+  channel: ChannelRow,
+  text: string,
+  capabilities: Capabilities,
+  mediaIds: string[] | null,
+) {
+  const assets = await deliveryMedia(db, delivery.postId, mediaIds ?? delivery.mediaOverride);
+  if (mediaIds && assets.length !== mediaIds.length) return ["A chosen file is no longer in the media library."];
   return checkPost(
     {
       caption: text,
-      media: media.map(({ asset }) => ({
+      media: assets.map((asset) => ({
         assetId: asset.id,
         kind: asset.kind,
         mimeType: asset.mimeType,
@@ -96,12 +104,17 @@ async function captionProblems(db: Db, delivery: DeliveryRow, channel: ChannelRo
         durationMs: asset.durationMs,
       })),
       approvedCrops: delivery.approvedCrops,
+      approvedTrims: delivery.approvedTrims,
     },
     capabilities,
     networkName(channel.network),
-  )
-    .filter((issue) => issue.kind === "block")
-    .map((issue) => issue.message);
+  ).flatMap((issue) => {
+    if (issue.kind === "block") return [issue.message];
+    if ((issue.kind === "crop" || issue.kind === "trim") && !issue.approved) {
+      return [`${issue.message} Pick a file that fits, or Duplicate the Post to ${issue.kind} it in the composer.`];
+    }
+    return [];
+  });
 }
 
 /** Edit: changes the text of a live Delivery in place, where the network allows it. */
@@ -113,7 +126,7 @@ export async function editDelivery(db: Db, deliveryId: string, rawText: string):
   const access = await accessFor(channel);
   const capabilities = await connector.capabilities(access);
   if (!capabilities.edit.text || !connector.editText) throw new UserError(capabilities.edit.note);
-  const problems = await captionProblems(db, delivery, channel, text, capabilities);
+  const problems = await problemsFor(db, delivery, channel, text, capabilities, null);
   if (problems.length > 0) throw new UserError(problems.join(" "));
 
   if (!(await lock(db, deliveryId))) throw new UserError("This Delivery is busy. Try again in a moment.");
@@ -217,16 +230,24 @@ async function removeOne(db: Db, deliveryId: string, options: { desktop?: Deskto
 }
 
 /**
- * Replace: removes a live Delivery and publishes a new one in its place, with new text.
- * Used where the network cannot Edit. Likes and comments on the old one are lost.
+ * Replace: removes a live Delivery and publishes a new one in its place, with new text and,
+ * optionally, new media (`mediaIds`, in order; null keeps the current media).
+ * Used when the media changes or the network cannot Edit. Likes and comments on the old one are lost.
  */
-export async function replaceDelivery(db: Db, deliveryId: string, rawText: string, now = new Date()): Promise<string> {
+export async function replaceDelivery(
+  db: Db,
+  deliveryId: string,
+  rawText: string,
+  options: { mediaIds?: string[] | null; now?: Date } = {},
+): Promise<string> {
   const { delivery, channel } = await loadDelivery(db, deliveryId);
   const text = rawText.trimEnd();
+  const mediaIds = options.mediaIds ?? null;
   if (delivery.status !== "published") throw new UserError("Only a live Delivery can be replaced.");
+  if (mediaIds && new Set(mediaIds).size !== mediaIds.length) throw new UserError("A file was chosen twice.");
   const connector = connectorFor(channel);
   const capabilities = await connector.capabilities(await accessFor(channel));
-  const problems = await captionProblems(db, delivery, channel, text, capabilities);
+  const problems = await problemsFor(db, delivery, channel, text, capabilities, mediaIds);
   if (problems.length > 0) throw new UserError(problems.join(" "));
 
   const [removal] = await removeDeliveries(db, [deliveryId]);
@@ -242,11 +263,17 @@ export async function replaceDelivery(db: Db, deliveryId: string, rawText: strin
         captionOverride: text,
         fields: delivery.fields,
         approvedCrops: delivery.approvedCrops,
-        scheduledFor: now,
+        approvedTrims: delivery.approvedTrims,
+        mediaOverride: mediaIds ?? delivery.mediaOverride,
+        scheduledFor: options.now ?? new Date(),
         replacesDeliveryId: delivery.id,
       })
       .returning();
-    await tx.insert(deliveryEvents).values({ deliveryId: replacement.id, type: "replaces", detail: { previous: delivery.id } });
+    await tx.insert(deliveryEvents).values({
+      deliveryId: replacement.id,
+      type: "replaces",
+      detail: { previous: delivery.id, mediaChanged: Boolean(mediaIds) },
+    });
     return replacement.id;
   });
 }
@@ -278,6 +305,10 @@ export async function loadPostDetail(db: Db, postId: string) {
   ]);
 
   const current = deliveryRows.filter(({ delivery }) => !delivery.superseded);
+  // Media of Deliveries whose Replace changed it.
+  const overrideIds = [...new Set(current.flatMap(({ delivery }) => delivery.mediaOverride ?? []))];
+  const overrideAssets =
+    overrideIds.length > 0 ? await db.select().from(mediaAssets).where(inArray(mediaAssets.id, overrideIds)) : [];
   return {
     post: row.post,
     brandName: row.brandName,
@@ -298,6 +329,9 @@ export async function loadPostDetail(db: Db, postId: string) {
         removalPermanent: connector?.baseCapabilities.removal.permanent ?? true,
         captionRules: connector?.baseCapabilities.caption ?? null,
         replaced: deliveryRows.some(({ delivery: older }) => older.id === delivery.replacesDeliveryId),
+        ownMedia: delivery.mediaOverride
+          ? delivery.mediaOverride.flatMap((id) => overrideAssets.filter((asset) => asset.id === id))
+          : null,
       };
     }),
   };

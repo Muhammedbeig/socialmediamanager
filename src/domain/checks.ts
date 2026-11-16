@@ -1,5 +1,5 @@
 import type { Capabilities, PostFormat } from "@/connectors/types";
-import type { CropRect } from "@/db/schema";
+import type { CropRect, TrimRange } from "@/db/schema";
 
 // Pre-publish checks. The composer runs these while the Member writes, and the server runs
 // them again before a Post is saved. Every rule comes from the Connector's capabilities.
@@ -14,11 +14,12 @@ export type DraftMedia = {
   durationMs: number | null;
 };
 
-/** What one Channel would receive: the caption after any override, and that Channel's crops. */
+/** What one Channel would receive: the caption after any override, and that Channel's crops and trims. */
 export type Draft = {
   caption: string;
   media: DraftMedia[];
   approvedCrops: Record<string, CropRect>;
+  approvedTrims?: Record<string, TrimRange>;
 };
 
 export type Issue =
@@ -27,7 +28,16 @@ export type Issue =
   /** Fixed automatically at publish time: format, codec or file size. */
   | { kind: "convert"; message: string; assetId: string }
   /** The picture must be cropped, which needs the Member's approval of a preview. */
-  | { kind: "crop"; message: string; assetId: string; minAspect: number; maxAspect: number; approved: boolean };
+  | { kind: "crop"; message: string; assetId: string; minAspect: number; maxAspect: number; approved: boolean }
+  /** The video must be trimmed, which needs the Member's approval of a preview. */
+  | {
+      kind: "trim";
+      message: string;
+      assetId: string;
+      minSeconds: number;
+      maxSeconds: number;
+      approved: boolean;
+    };
 
 const ASPECT_TOLERANCE = 0.01;
 
@@ -96,6 +106,17 @@ export function cropIsValid(crop: CropRect, width: number, height: number, min?:
   return aspectInRange(crop.width / crop.height, min, max);
 }
 
+export function trimIsValid(trim: TrimRange, durationMs: number, minSeconds = 0, maxSeconds = Infinity): boolean {
+  if (trim.startMs < 0 || trim.endMs > durationMs + 50 || trim.endMs <= trim.startMs) return false;
+  const seconds = (trim.endMs - trim.startMs) / 1000;
+  return seconds >= minSeconds && seconds <= maxSeconds + 0.05;
+}
+
+/** The trim offered first: from the start, as long as the network allows. */
+export function defaultTrim(durationMs: number, maxSeconds: number): TrimRange {
+  return { startMs: 0, endMs: Math.min(durationMs, Math.floor(maxSeconds * 1000)) };
+}
+
 /** The largest centred crop that fits the allowed shapes. Offered first in the crop preview. */
 export function defaultCrop(width: number, height: number, min?: number, max?: number): CropRect {
   const aspect = width / height;
@@ -156,7 +177,7 @@ export function checkPost(draft: Draft, capabilities: Capabilities, network: str
 
   for (const item of draft.media) {
     if (item.kind === "image") issues.push(...checkImage(item, draft, capabilities, network));
-    else issues.push(...checkVideo(item, capabilities, network));
+    else issues.push(...checkVideo(item, draft, capabilities, network));
   }
   return issues;
 }
@@ -198,21 +219,25 @@ function checkImage(item: DraftMedia, draft: Draft, capabilities: Capabilities, 
   return issues;
 }
 
-function checkVideo(item: DraftMedia, capabilities: Capabilities, network: string): Issue[] {
+function checkVideo(item: DraftMedia, draft: Draft, capabilities: Capabilities, network: string): Issue[] {
   const rules = capabilities.video;
   if (!rules) return [{ kind: "block", assetId: item.assetId, message: `${network} does not take videos.` }];
   const issues: Issue[] = [];
   const seconds = item.durationMs === null ? null : item.durationMs / 1000;
 
-  // Trimming and cropping a video need an approved preview, which v1 does not offer yet,
-  // so these are flagged for the Member to fix in the file.
+  // Too long: the Member trims it in a preview. Never cut silently.
   if (seconds !== null && rules.maxSeconds !== undefined && seconds > rules.maxSeconds) {
+    const trim = draft.approvedTrims?.[item.assetId];
     issues.push({
-      kind: "block",
+      kind: "trim",
       assetId: item.assetId,
-      message: `${network} takes videos up to ${rules.maxSeconds} seconds; this one runs ${Math.round(seconds)}.`,
+      minSeconds: rules.minSeconds ?? 0,
+      maxSeconds: rules.maxSeconds,
+      approved: trim ? trimIsValid(trim, item.durationMs!, rules.minSeconds, rules.maxSeconds) : false,
+      message: `${network} takes videos up to ${rules.maxSeconds} seconds; this one runs ${Math.round(seconds)}. It needs a trim.`,
     });
   }
+  // Too short or the wrong shape cannot be fixed by cutting, so the Member picks another file.
   if (seconds !== null && rules.minSeconds !== undefined && seconds < rules.minSeconds) {
     issues.push({
       kind: "block",
@@ -240,7 +265,9 @@ function checkVideo(item: DraftMedia, capabilities: Capabilities, network: strin
   return issues;
 }
 
-/** True when nothing blocks the Post and every needed crop has been approved. */
+/** True when nothing blocks the Post and every needed crop and trim has been approved. */
 export function canPublish(issues: readonly Issue[]): boolean {
-  return issues.every((issue) => issue.kind === "convert" || (issue.kind === "crop" && issue.approved));
+  return issues.every(
+    (issue) => issue.kind === "convert" || ((issue.kind === "crop" || issue.kind === "trim") && issue.approved),
+  );
 }

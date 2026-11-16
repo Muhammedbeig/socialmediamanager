@@ -159,6 +159,14 @@ describe("prepareVideo", () => {
     expect((await prepareVideo(db, asset, mp4Only)).path).toBe(originalPath(asset));
   });
 
+  it("keeps only the part of a video the Member approved", async () => {
+    const asset = await upload("clip.mp4");
+    const prepared = await prepareVideo(db, asset, mp4Only, { startMs: 500, endMs: 1500 });
+    const probe = await probeFile(prepared.path);
+    expect(probe.durationMs).toBeGreaterThan(900);
+    expect(probe.durationMs).toBeLessThan(1200);
+  }, 60_000);
+
   it("converts another container to MP4", async () => {
     const asset = await upload("clip.mov");
     const prepared = await prepareVideo(db, asset, mp4Only);

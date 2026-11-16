@@ -14,6 +14,11 @@ const cropSchema = z.object({
   height: z.number().int().positive(),
 });
 
+const trimSchema = z.object({
+  startMs: z.number().int().min(0),
+  endMs: z.number().int().positive(),
+});
+
 const payloadSchema = z.object({
   brandId: z.uuid(),
   caption: z.string().max(100_000),
@@ -24,6 +29,7 @@ const payloadSchema = z.object({
         channelId: z.uuid(),
         captionOverride: z.string().max(100_000).nullable(),
         approvedCrops: z.record(z.uuid(), cropSchema),
+        approvedTrims: z.record(z.uuid(), trimSchema).default({}),
       }),
     )
     .max(100),
@@ -31,7 +37,7 @@ const payloadSchema = z.object({
   scheduledFor: z.iso.datetime({ offset: true }).nullable(),
 });
 
-export type ComposePayload = z.infer<typeof payloadSchema>;
+export type ComposePayload = z.input<typeof payloadSchema>;
 export type ComposeResult = { ok: true; postId: string } | { ok: false; error: string };
 
 export async function createPostAction(payload: ComposePayload): Promise<ComposeResult> {

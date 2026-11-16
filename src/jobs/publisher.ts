@@ -1,5 +1,6 @@
 import { PgBoss } from "pg-boss";
 import type { Db } from "@/db/client";
+import { beat } from "@/settings/heartbeat";
 import { deliveries } from "@/db/schema";
 import { type RunDeps, dueCondition, runDelivery } from "./run-delivery";
 
@@ -58,6 +59,7 @@ export async function startPublisher(options: {
     if (running) return;
     running = true;
     try {
+      await beat(db, deps.now());
       await dispatchDue(db, send, deps.now());
     } catch (error) {
       log(`Could not check for due Deliveries: ${error instanceof Error ? error.message : String(error)}`);

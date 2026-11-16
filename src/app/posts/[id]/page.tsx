@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
 import { loadPostDetail } from "@/deliveries/manage";
 import { DELIVERY_STATUS_LABEL, POST_STATUS_LABEL } from "@/domain/post-status";
-import { thumbUrl } from "@/media/client-asset";
+import { thumbUrl, toClientAsset } from "@/media/client-asset";
 import { FlashMessages, PageHeader, Panel, Pill, buttonClass } from "@/ui/primitives";
 import { AutoRefresh } from "./auto-refresh";
 import { DeliveryActions, RemoveDialogButton } from "./delivery-actions";
@@ -65,18 +65,17 @@ export default async function PostDetailPage({
           <Link href={`/compose?duplicate=${detail.post.id}`} className={buttonClass.secondary}>
             Duplicate to a Brand
           </Link>
-          {removable.length > 0 ? (
-            <RemoveDialogButton
-              postId={detail.post.id}
-              label="Remove…"
-              deliveries={removable.map((delivery) => ({
-                id: delivery.id,
-                channel: `${delivery.channelName} on ${delivery.networkName}`,
-                live: delivery.status === "published",
-                note: delivery.status === "published" ? delivery.removalNote : "Not live yet: it will be cancelled.",
-              }))}
-            />
-          ) : null}
+          <RemoveDialogButton
+            postId={detail.post.id}
+            label="Remove…"
+            hidden={removable.length === 0}
+            deliveries={removable.map((delivery) => ({
+              id: delivery.id,
+              channel: `${delivery.channelName} on ${delivery.networkName}`,
+              live: delivery.status === "published",
+              note: delivery.status === "published" ? delivery.removalNote : "Not live yet: it will be cancelled.",
+            }))}
+          />
         </div>
       </PageHeader>
       <FlashMessages query={query} />
@@ -151,6 +150,20 @@ export default async function PostDetailPage({
                 {delivery.captionOverride !== null ? (
                   <p className="mt-1 line-clamp-2 text-xs text-muted">Own text: {delivery.captionOverride}</p>
                 ) : null}
+                {delivery.ownMedia ? (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-muted">Own media:</span>
+                    {delivery.ownMedia.length === 0 ? <span className="text-xs text-muted">none</span> : null}
+                    {delivery.ownMedia.map((asset) => (
+                      <img
+                        key={asset.id}
+                        src={thumbUrl(asset.id)}
+                        alt={asset.originalName}
+                        className="size-8 rounded-sm border border-border object-cover"
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <DeliveryActions
                 postId={detail.post.id}
@@ -159,6 +172,7 @@ export default async function PostDetailPage({
                   status: delivery.status,
                   channel: `${delivery.channelName} on ${delivery.networkName}`,
                   text: delivery.text,
+                  media: (delivery.ownMedia ?? detail.media).map(toClientAsset),
                   canEdit: delivery.canEdit,
                   editNote: delivery.editNote,
                   removalNote: delivery.removalNote,
