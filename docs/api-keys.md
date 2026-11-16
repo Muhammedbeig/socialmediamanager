@@ -5,7 +5,7 @@ Everything the app needs from outside, with the link to start from. Put every va
 The click-by-click steps are in [setup.md](setup.md).
 
 In every redirect URL below, `APP_URL` means the value in `.env.local`, normally
-`http://localhost:3000`.
+`https://localhost:3000`.
 
 | For | What to get | Where | Put in `.env.local` |
 | --- | --- | --- | --- |

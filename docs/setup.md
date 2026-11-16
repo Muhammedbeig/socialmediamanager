@@ -53,7 +53,7 @@ One app in development mode covers all three networks. In development mode it wo
 people with a role on the app, which is all an internal tool needs. No app review.
 
 In the redirect URLs below, `APP_URL` is the value in your `.env.local`, normally
-`http://localhost:3000`.
+`https://localhost:3000`.
 
 1. Go to <https://developers.facebook.com/apps>, log in with the Facebook account that manages
    your Pages, and create an app. Add these use cases:
@@ -184,7 +184,7 @@ npm run service:install    # start at every Windows login (adds a shortcut to yo
 npm run service:start      # start it now, hidden
 ```
 
-- The app is then at `APP_URL` (normally <http://localhost:3000>); only this laptop can reach it.
+- The app is then at `APP_URL` (normally <https://localhost:3000>); only this laptop can reach it.
 - The log is `data\logs\service.log`.
 - Only one copy runs: if port 3000 is taken (for example by `npm run dev`), the service does not start.
 - Start at login can also be turned on and off on the Settings screen.
