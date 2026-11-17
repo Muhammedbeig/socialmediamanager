@@ -224,6 +224,13 @@ describe("Meta error handling", () => {
     expect(error.message).toContain("Invalid parameter");
   });
 
+  it("explains a spam block that comes with an empty message", async () => {
+    answers.push({ status: 400, body: { error: { message: "", error_user_msg: "", code: 368 } } });
+    const error = await failure(metaRequest("https://graph.facebook.com/v27.0/1/feed"));
+    expect(error.kind).toBe("rejected");
+    expect(error.message).toMatch(/temporarily blocked this as possibly spam.*\(code 368\)/);
+  });
+
   it("treats no answer as retryable, or outcome unknown when something may have been published", async () => {
     vi.stubGlobal("fetch", async () => {
       throw new TypeError("fetch failed");

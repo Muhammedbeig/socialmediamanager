@@ -22,6 +22,10 @@ type MetaErrorBody = {
 const RETRYABLE_CODES = new Set([1, 2, 4, 17, 32, 341, 613]);
 // Token expired, revoked, or the session is invalid.
 const AUTH_CODES = new Set([102, 190]);
+// Plain words for codes Meta may send without a message.
+const KNOWN_CODES: Record<number, string> = {
+  368: "Facebook temporarily blocked this as possibly spam, often after several identical posts in a short time. Wait a while, change the text if you can, then Retry.",
+};
 
 export type MetaRequestOptions = {
   method?: "GET" | "POST" | "DELETE";
@@ -78,10 +82,12 @@ export async function metaRequest<T>(url: string | URL, options: MetaRequestOpti
   if (response.ok && !errorBody.error && !errorBody.error_type) return parsed as T;
 
   const code = errorBody.error?.code ?? errorBody.code;
+  // Meta sometimes sends an empty message, so empty strings fall through too.
   const message =
-    errorBody.error?.error_user_msg ??
-    errorBody.error?.message ??
-    errorBody.error_message ??
+    errorBody.error?.error_user_msg ||
+    errorBody.error?.message ||
+    errorBody.error_message ||
+    (code !== undefined && KNOWN_CODES[code]) ||
     `The network answered with HTTP ${response.status}.`;
 
   let kind: ConnectorErrorKind = "rejected";
