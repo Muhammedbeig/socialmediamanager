@@ -36,7 +36,7 @@ The account ID is the same either way, so connecting the other way updates the s
   @mcdomenu.de).
 - The configuration must not include ad accounts: with them, the login offers to create an ad
   account, with no way to skip it.
-- Removal on a directly connected Channel is not yet proven against the real network; the first
-  real Removal confirms it. If Meta refuses, the Removal fails with Meta's message and the
-  Delivery stays live.
+- Removal on a directly connected Channel worked against the real network on 2026-11-17
+  (@mcdomenu.de, photo and Reel), although Meta's consent screen describes the permission as for
+  accounts "linked to a Page".
 - In development mode, each account needs an Instagram Tester invite on the app.
