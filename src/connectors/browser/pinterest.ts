@@ -185,10 +185,22 @@ export const pinterestConnector: Connector = {
         await page.goto(`${PINTEREST}/pin/${live.externalPostId}/`, { waitUntil: "domcontentloaded" });
         await clearChallenges(page, context, pinterestSite, access.attention);
         await openEdit(page, live.externalPostId);
-        const description = await firstVisible(descriptionCandidates(page), "description in Edit Pin");
-        await replaceText(page, description, text);
-        await (await expectVisible(page.getByRole("button", { name: /^save$/i }), "Save button")).click();
-        await page.getByRole("button", { name: /^save$/i }).first().waitFor({ state: "hidden", timeout: 30_000 }).catch(() => {});
+        // Everything happens inside the Edit Pin panel, not on the Pin page behind it. Its
+        // description is a plain text box (checked on the live site on 2026-11-17).
+        const panel = page
+          .locator("div")
+          .filter({ has: page.getByText(/^edit pin$/i) })
+          .filter({ has: page.getByRole("button", { name: /^save$/i }) })
+          .last();
+        const description = await firstVisible(
+          [panel.locator("textarea"), panel.getByRole("textbox", { name: /description/i }), panel.locator('[contenteditable="true"]')],
+          "description in Edit Pin",
+        );
+        if ((await description.evaluate((element) => element.tagName)) === "TEXTAREA") await description.fill(text);
+        else await replaceText(page, description, text);
+        const save = await expectVisible(panel.getByRole("button", { name: /^save$/i }), "Save in Edit Pin");
+        await save.click();
+        await save.waitFor({ state: "hidden", timeout: 30_000 }).catch(() => {});
       },
       { screenshotName: access.screenshotName },
     );
