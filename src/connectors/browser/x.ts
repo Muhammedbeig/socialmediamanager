@@ -11,8 +11,8 @@ import {
 } from "./engine";
 
 // X, through its website in the Channel's own Chrome window (no paid API).
-// Written against x.com's page structure as known in November 2026 and not yet run against the
-// live site: if X changes a page, the Delivery fails as "page changed" with a screenshot.
+// Written against x.com's page structure as of November 2026; text posts checked on the live site
+// on 2026-11-17. If X changes a page, the Delivery fails as "page changed" with a screenshot.
 
 const X = "https://x.com";
 
@@ -68,17 +68,25 @@ export const xConnector: Connector = {
         await clearChallenges(page, context, xSite, access.attention);
         if (!page.url().includes("/compose/post")) await page.goto(`${X}/compose/post`, { waitUntil: "domcontentloaded" });
 
-        const editor = await expectVisible(page.locator('[data-testid="tweetTextarea_0"]'), "post editor");
+        // x.com/compose/post opens the composer as a dialog over the home timeline, which has a
+        // composer of its own. Everything happens inside the dialog, so the media and the text
+        // never end up in different composers.
+        const composer = page.locator('[role="dialog"]').filter({ has: page.locator('[data-testid="tweetTextarea_0"]') });
+        await expectVisible(composer, "post composer");
+        const editor = await expectVisible(composer.locator('[data-testid="tweetTextarea_0"]'), "post editor");
         if (input.media.length > 0) {
-          const fileInput = page.locator('input[data-testid="fileInput"]').first();
+          const fileInput = composer.locator('input[data-testid="fileInput"]').first();
           await fileInput.waitFor({ state: "attached", timeout: 30_000 }).catch(() => {
             throw new ConnectorError("rejected", 'The page changed at "add media", so the script needs updating.');
           });
           await fileInput.setInputFiles(input.media.map((media) => media.path));
         }
         await replaceText(page, editor, input.caption);
+        if (input.media.length > 0) {
+          await expectVisible(composer.locator('[data-testid="attachments"]'), "media in the composer", 120_000);
+        }
 
-        const post = page.locator('[data-testid="tweetButton"]');
+        const post = composer.locator('[data-testid="tweetButton"]');
         await expectVisible(post, "Post button");
         // Media uploads must finish before X enables Post.
         await waitEnabled(post, "media upload", 15 * 60_000);
