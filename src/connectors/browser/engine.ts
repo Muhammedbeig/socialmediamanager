@@ -180,6 +180,15 @@ export async function withChannelBrowser<T>(
         }
         throw new ConnectorError("rejected", `The page changed at "${error.step}", so the script needs updating. ${shot}`);
       }
+      if (error instanceof Error && error.name === "TimeoutError") {
+        // A step the script did not wrap in expectVisible, such as a click something covered.
+        const file = await screenshot(page, options.screenshotName ?? channelId);
+        const step = error.message.split("\n")[0].replace(/\s*Call log:.*$/, "");
+        throw new ConnectorError(
+          "rejected",
+          `A step on the page did not work (${step}), so the script needs updating. Screenshot: ${file ?? "could not be taken"}.`,
+        );
+      }
       throw error;
     } finally {
       clearInterval(follow);
@@ -254,9 +263,18 @@ export async function waitEnabled(locator: Locator, step: string, timeoutMs: num
   throw new PageChanged(step);
 }
 
-/** Replaces the text of a rich editor the way a person would: select all, then type. */
+/**
+ * Replaces the text of a rich editor the way a person would: select all, then type. A menu or
+ * tip left open over the editor (TikTok opens some) is closed first; if something still covers
+ * it, the editor is focused directly instead of clicked.
+ */
 export async function replaceText(page: Page, editor: Locator, text: string): Promise<void> {
-  await editor.click();
+  await page.keyboard.press("Escape").catch(() => {});
+  try {
+    await editor.click({ timeout: 5000 });
+  } catch {
+    await editor.focus();
+  }
   await page.keyboard.press("Control+A");
   await page.keyboard.press("Delete");
   if (text) await page.keyboard.insertText(text);
