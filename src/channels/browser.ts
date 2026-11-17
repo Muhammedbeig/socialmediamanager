@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { and, eq, sql } from "drizzle-orm";
-import { profileDir, withChannelBrowser } from "@/connectors/browser/engine";
+import { openPlainChrome, profileDir, withChannelBrowser, withChannelLock } from "@/connectors/browser/engine";
 import { getConnector, getNetwork, networkName } from "@/connectors/registry";
 import type { Db } from "@/db/client";
 import { type Network, brands, channels } from "@/db/schema";
@@ -10,7 +10,7 @@ import { type DesktopNotifier, raiseAlert } from "@/notify";
 
 // Browser Channels (TikTok, Pinterest, X) have no OAuth. The Member adds the account, and the
 // worker opens that Channel's own Chrome window at the network's login page. The Member logs in
-// there once; the window's profile keeps the session for later Deliveries.
+// there once and closes the window; its profile keeps the session for later Deliveries.
 
 export const LOGIN_WAIT_MS = 15 * 60_000;
 
@@ -84,8 +84,9 @@ export async function forgetBrowserProfile(channelId: string) {
 }
 
 /**
- * Runs one waiting login request, if any. The window stays open until the Member has logged in,
- * or for 15 minutes.
+ * Runs one waiting login request, if any. Opens a plain Chrome window (not under automation, so
+ * "Sign in with Google" works) on the Channel's profile at the login page. Once the Member closes
+ * it, or after 15 minutes, the profile is checked for a logged-in session.
  */
 export async function runNextLogin(db: Db, options: { desktop?: DesktopNotifier; log?: (m: string) => void } = {}) {
   const [channel] = await db
@@ -106,27 +107,28 @@ export async function runNextLogin(db: Db, options: { desktop?: DesktopNotifier;
 
   let error: string | null = null;
   try {
-    await withChannelBrowser(
-      channel.id,
-      async (page, context) => {
-        await page.goto(site.loginUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
-        if (await site.loggedIn(context)) return;
-        await page.bringToFront().catch(() => {});
-        await raiseAlert(
-          db,
-          { kind: "needs_attention", title: `Log in to ${label}`, body: "Its Chrome window is open at the login page.", link: "/channels" },
-          options.desktop,
-        );
-        const started = Date.now();
-        while (!(await site.loggedIn(context)) || (await site.challenged(page))) {
-          if (Date.now() - started > LOGIN_WAIT_MS) throw new Error("No login within 15 minutes.");
-          await page.waitForTimeout(2000);
-        }
-        // Let the site finish setting up the session before the window closes.
-        await page.waitForTimeout(3000);
-      },
-      { screenshotName: `login-${channel.id}`, lockWaitMs: 60_000 },
-    );
+    const ended = await withChannelLock(channel.id, 60_000, async () => {
+      await raiseAlert(
+        db,
+        {
+          kind: "needs_attention",
+          title: `Log in to ${label}`,
+          body: "Its Chrome window is open at the login page. Log in, then close that window.",
+          link: "/channels",
+        },
+        options.desktop,
+      );
+      return openPlainChrome(channel.id, site.loginUrl, LOGIN_WAIT_MS);
+    });
+    const loggedIn = await withChannelBrowser(channel.id, async (_page, context) => site.loggedIn(context), {
+      lockWaitMs: 60_000,
+    });
+    if (!loggedIn) {
+      error =
+        ended === "timed_out"
+          ? "No login within 15 minutes, so the window was closed."
+          : "The window was closed before the login finished.";
+    }
   } catch (cause) {
     error = cause instanceof Error ? cause.message : String(cause);
   }

@@ -159,8 +159,14 @@ YouTube allows about 100 uploads a day per project.
 ## 3d. TikTok, Pinterest and X
 
 No keys. On the Channels screen, use **Add a TikTok, Pinterest or X account**. A Chrome window
-of its own opens at the network's login page: log in there once (the publisher must be running).
-That window's profile keeps the login for later Posts, separate from your own Chrome.
+of its own opens at the network's login page: log in there once, then **close the window** (the
+publisher must be running). It is an ordinary Chrome window the app does not control, so "Sign in
+with Google" works there. That window's profile keeps the login for later Posts, separate from
+your own Chrome; posting windows reuse it.
+
+If a site logs the account out later, the Post waits on **Needs attention** with the posting
+window open. Google refuses to sign in inside that automated window, so log in there with the
+site's own username and password, or use **Log in again** on the Channels screen afterwards.
 
 When a network asks for a code or a CAPTCHA while posting, you get a desktop notification and the
 Post waits on the **Needs attention** screen until you clear it in that window.

@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { Client } from "pg";
@@ -12,13 +14,58 @@ import { type AttentionHooks, ConnectorError } from "../types";
 // - one task at a time per Channel, across processes (a database lock);
 // - no stealth, no fingerprint tricks, no CAPTCHA solving: login checks go to the Member;
 // - every step checks the page, and a mismatch fails as "page changed" with a screenshot.
+// Logins are the exception to automation: the Member logs in in a plain Chrome window on the
+// Channel's profile that the app starts but does not control (openPlainChrome). Sites such as
+// Google refuse to sign in inside a browser under automation; a plain window is an ordinary
+// browser, so no detection is being evaded. Posting windows reuse the saved session.
 
 export function profileDir(channelId: string): string {
   return dataPath(path.join("browser-profiles", channelId));
 }
 
+/** Where Windows installs Google Chrome, for all users or just this one; null if not found. */
+export function chromePath(): string | null {
+  const candidates = [
+    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
+    process.env["PROGRAMFILES(X86)"] && path.join(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe"),
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
+  ];
+  return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))) ?? null;
+}
+
+/**
+ * Opens a plain Chrome window (not under automation) on this Channel's profile at `url`, and
+ * resolves once the Member closes it. Closes it after `maxMs`. Call inside withChannelLock.
+ */
+export async function openPlainChrome(channelId: string, url: string, maxMs: number): Promise<"closed" | "timed_out"> {
+  const chrome = chromePath();
+  if (!chrome) throw new Error("Google Chrome is not installed.");
+  const dir = profileDir(channelId);
+  await mkdir(dir, { recursive: true });
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      chrome,
+      [`--user-data-dir=${dir}`, "--no-first-run", "--no-default-browser-check", "--window-size=1280,900", url],
+      { stdio: "ignore" },
+    );
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, maxMs);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve(timedOut ? "timed_out" : "closed");
+    });
+  });
+}
+
 /** Holds a database lock for one Channel's browser, so no two tasks open its profile at once. */
-async function withChannelLock<T>(channelId: string, waitMs: number, fn: () => Promise<T>): Promise<T> {
+export async function withChannelLock<T>(channelId: string, waitMs: number, fn: () => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: requireEnv("DATABASE_URL") });
   await client.connect();
   try {

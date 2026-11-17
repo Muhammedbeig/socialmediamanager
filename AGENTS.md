@@ -33,6 +33,7 @@ Platform limits change often. Before building or changing a Connector, check the
 - Always headed, at human pace: Deliveries to the same network go out one at a time, 3 minutes apart by default.
 - Login checks, codes and CAPTCHAs belong to the Member. On detection, set the Delivery to Needs attention, notify, bring that Channel's window forward, wait, then resume.
 - The browser stays honest: no stealth plugins, fingerprint spoofing, CAPTCHA solvers or simulated human behaviour.
+- Logins happen in a plain Chrome window on the Channel's profile that the app starts but does not control, so "Sign in with Google" works. Posting windows reuse that saved session.
 - Assert the page state at every step. On a mismatch, fail the Delivery as "page changed" with a screenshot and leave it for a manual retry after the script is fixed.
 - Browser Connectors serve the owner's Brands only. A public launch moves these networks to their official APIs.
 

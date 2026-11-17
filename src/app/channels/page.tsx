@@ -19,7 +19,6 @@ import {
 } from "@/ui/primitives";
 import {
   addBrowserChannelAction,
-  bringForwardAction,
   disconnectChannelAction,
   loginAgainAction,
   moveChannelAction,
@@ -204,7 +203,7 @@ export default async function ChannelsPage({
                             </div>
                             {browser && login.inWindow ? (
                               <Pill tone="warn" live>
-                                Log in in its Chrome window
+                                Log in in its Chrome window, then close it
                               </Pill>
                             ) : browser && login.requested ? (
                               <Pill tone="neutral" live>
@@ -217,14 +216,6 @@ export default async function ChannelsPage({
                             )}
 
                             <div className="flex flex-wrap items-center gap-2">
-                              {browser && login.inWindow ? (
-                                <form action={bringForwardAction}>
-                                  <input type="hidden" name="channelId" value={channel.id} />
-                                  <button type="submit" className={buttonClass.secondary}>
-                                    Bring window forward
-                                  </button>
-                                </form>
-                              ) : null}
                               {browser && !login.inWindow && !login.requested ? (
                                 <form action={loginAgainAction}>
                                   <input type="hidden" name="channelId" value={channel.id} />

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { sql } from "drizzle-orm";
+import { chromePath } from "@/connectors/browser/engine";
 import type { Db } from "@/db/client";
 import { missingR2Settings } from "@/media/r2";
 import { lastHeartbeat, workerRunning } from "./heartbeat";
@@ -30,14 +31,8 @@ function missing(names: string[]): string[] {
   return names.filter((name) => !process.env[name]);
 }
 
-/** Where Windows installs Google Chrome, for all users or just this one. */
 export function chromeInstalled(): boolean {
-  const candidates = [
-    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
-    process.env["PROGRAMFILES(X86)"] && path.join(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe"),
-    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
-  ];
-  return candidates.some((candidate) => candidate && existsSync(candidate));
+  return chromePath() !== null;
 }
 
 export function startupShortcutPath(): string | null {
