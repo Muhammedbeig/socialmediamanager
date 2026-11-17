@@ -113,6 +113,8 @@ async function problemsFor(
       })),
       approvedCrops: delivery.approvedCrops,
       approvedTrims: delivery.approvedTrims,
+      // The Delivery's own fields, such as a Pinterest board, so required ones are not missing.
+      fields: delivery.fields,
     },
     capabilities,
     networkName(channel.network),

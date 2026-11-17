@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { fakeNetwork } from "@/connectors/fake";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeConnector, fakeNetwork } from "@/connectors/fake";
 import type { Db } from "@/db/client";
 import { deliveries, mediaAssets, notifications } from "@/db/schema";
 import { editDelivery, loadPostDetail, removeDeliveries, replaceDelivery } from "@/deliveries/manage";
@@ -45,6 +45,21 @@ describe("Edit", () => {
   it("refuses text the network would not take", async () => {
     const { delivery } = await livePost();
     await expect(editDelivery(db, delivery.id, "x".repeat(300))).rejects.toThrow(/280 characters/);
+  });
+
+  it("keeps the Delivery's own fields, so a required one such as a Pinterest board is not missing", async () => {
+    const { delivery } = await livePost();
+    await db.update(deliveries).set({ fields: { board: "Menu" } }).where(eq(deliveries.id, delivery.id));
+    const spy = vi.spyOn(fakeConnector, "capabilities").mockResolvedValue({
+      ...fakeConnector.baseCapabilities,
+      fields: [{ key: "board", label: "Board", kind: "text", required: true }],
+    });
+    try {
+      await editDelivery(db, delivery.id, "New text");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fakeNetwork.posts.get(delivery.externalPostId!)!.caption).toBe("New text");
   });
 
   it("refuses a Delivery that is not live", async () => {
