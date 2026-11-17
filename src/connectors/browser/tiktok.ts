@@ -155,11 +155,16 @@ export const tiktokConnector: Connector = {
         await page.goto(STUDIO_CONTENT, { waitUntil: "domcontentloaded" });
         await clearChallenges(page, context, tiktokSite, access.attention);
         const link = await expectVisible(page.locator(`a[href*="/${live.externalPostId}"]`), "the post in the content list", 60_000);
-        // The row holding the post, and its actions menu.
-        const row = link.locator("xpath=ancestor::*[.//button][1]");
+        // The row holding the post: the nearest container with its action buttons (edit, stats,
+        // comments, more). The "more" (⋯) button is the last of them and may have no name.
+        const row = link.locator("xpath=ancestor::*[count(.//button) >= 4][1]");
         await row.hover().catch(() => {});
         const more = await firstVisible(
-          [row.getByRole("button", { name: /more|actions/i }), row.locator('button[aria-haspopup], [data-tt*="more" i]')],
+          [
+            row.getByRole("button", { name: /more|actions/i }),
+            row.locator('button[aria-haspopup], [data-tt*="more" i]'),
+            row.locator("button").last(),
+          ],
           "the post's actions menu",
         );
         await more.click();
