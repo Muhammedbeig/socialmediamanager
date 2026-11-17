@@ -255,11 +255,6 @@ export async function replaceDelivery(
   if (mediaIds && new Set(mediaIds).size !== mediaIds.length) throw new UserError("A file was chosen twice.");
   const connector = connectorFor(channel);
   const capabilities = await connector.capabilities(await accessFor(channel, db));
-  if (capabilities.removal.manual) {
-    throw new UserError(
-      `${capabilities.removal.note} Replace would leave the old post up, so it is not offered here: delete the post in the app, mark it removed, and publish a new Post.`,
-    );
-  }
   const problems = await problemsFor(db, delivery, channel, text, capabilities, mediaIds);
   if (problems.length > 0) throw new UserError(problems.join(" "));
 
@@ -345,7 +340,6 @@ export async function loadPostDetail(db: Db, postId: string) {
         editNote: rules?.edit.note ?? "",
         removalNote: rules?.removal.note ?? "",
         removalPermanent: rules?.removal.permanent ?? true,
-        removalManual: rules?.removal.manual ?? false,
         captionRules: rules?.caption ?? null,
         replaced: deliveryRows.some(({ delivery: older }) => older.id === delivery.replacesDeliveryId),
         ownMedia: delivery.mediaOverride

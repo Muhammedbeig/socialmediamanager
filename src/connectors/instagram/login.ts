@@ -5,20 +5,12 @@ import type { ChannelTarget, ConnectorAuth } from "../types";
 
 // Instagram API with Unified Login: connects Instagram professional accounts directly, with no
 // Facebook Page (docs/adr/0008). It is Facebook Login for Business with a configuration
-// (INSTAGRAM_LOGIN_CONFIG_ID) whose assets are Instagram accounts. The Member picks a business
-// portfolio and the Instagram accounts to share; the app gets a business integration system user
-// token that never expires (set in the configuration) and publishes on graph.facebook.com.
-// Meta replaced "Instagram Login" with this for newer apps. Its permissions have no delete
-// permission, so posts on these Channels cannot be removed by the app.
-// Checked against Meta's "Instagram API with Unified Login" get-started, authentication and
-// permissions docs on 2026-11-17.
-
-/** Saved in a Channel's settings: which way an Instagram Channel connected. */
-export type InstagramLogin = "facebook" | "direct";
-
-export function instagramLoginOf(settings: Record<string, unknown>): InstagramLogin {
-  return settings.login === "direct" ? "direct" : "facebook";
-}
+// (INSTAGRAM_LOGIN_CONFIG_ID) whose assets are Instagram accounts and whose permissions include
+// instagram_content_publish and instagram_manage_contents. The Member picks a business portfolio
+// and the Instagram accounts to share; the app gets a business integration system user token that
+// never expires (set in the configuration). Meta offers this to newer apps instead of Instagram Login.
+// Checked against Meta's "Instagram API with Unified Login" get-started and authentication docs
+// on 2026-11-17.
 
 type InstagramAccount = { id: string; username?: string; name?: string };
 type AccountList = { data: InstagramAccount[]; paging?: { next?: string } };

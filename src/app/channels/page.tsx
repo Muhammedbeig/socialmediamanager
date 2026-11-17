@@ -110,8 +110,8 @@ export default async function ChannelsPage({
               ))}
             </form>
             <p className="mt-3 max-w-3xl text-sm leading-5 text-muted">
-              Instagram through Facebook needs the profile linked to one of your Facebook Pages, and can remove posts.
-              Instagram directly needs no Page, but the app cannot remove its posts: you delete them in Instagram.
+              Instagram through Facebook needs the profile linked to one of your Facebook Pages. Instagram directly
+              needs no Page: the account must be in one of your business portfolios instead.
             </p>
             {notSetUp.length > 0 ? (
               <ul className="mt-4 flex flex-col gap-1 text-sm leading-5 text-muted">
@@ -196,7 +196,7 @@ export default async function ChannelsPage({
                                     : "Login does not expire"}
                                 {channel.network === "instagram"
                                   ? channel.settings.login === "direct"
-                                    ? " · Connected directly: delete removed posts in Instagram yourself"
+                                    ? " · Connected directly"
                                     : " · Connected through Facebook"
                                   : ""}
                               </p>

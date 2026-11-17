@@ -22,8 +22,6 @@ type DeliveryView = {
   canEdit: boolean;
   editNote: string;
   removalNote: string;
-  /** The network cannot take the post down: Removal only marks it removed, and Replace is not offered. */
-  removalManual: boolean;
   captionRules: Capabilities["caption"] | null;
 };
 
@@ -44,12 +42,10 @@ export function DeliveryActions({ postId, delivery }: { postId: string; delivery
 
   const live = delivery.status === "published";
   const cancellable = delivery.status === "scheduled" || delivery.status === "failed";
-  const markOnly = live && delivery.removalManual;
   const removal = {
     id: delivery.id,
     channel: delivery.channel,
     live,
-    markOnly,
     note: live ? delivery.removalNote : "Not live yet: it will be cancelled.",
   };
 
@@ -66,9 +62,8 @@ export function DeliveryActions({ postId, delivery }: { postId: string; delivery
             Edit
           </button>
         ) : null}
-        {live && !delivery.removalManual ? (
-          // Replace is how media changes, and the only change where Edit is not possible. Not offered
-          // where the app cannot take the old post down.
+        {live ? (
+          // Replace is offered everywhere: it is how media changes, and the only change where Edit is not possible.
           <button type="button" className={buttonClass.smallSecondary} disabled={pending} onClick={() => setTextMode("replace")}>
             Replace…
           </button>
@@ -76,7 +71,7 @@ export function DeliveryActions({ postId, delivery }: { postId: string; delivery
         <RemoveDialogButton
           postId={postId}
           deliveries={[removal]}
-          label={markOnly ? "Mark removed…" : live ? "Remove…" : "Cancel…"}
+          label={live ? "Remove…" : "Cancel…"}
           hidden={!live && !cancellable}
           small
         />
@@ -256,14 +251,7 @@ function TextDialog({
   );
 }
 
-type RemovalTarget = {
-  id: string;
-  channel: string;
-  live: boolean;
-  /** The app only marks it removed; the Member deletes it on the network. */
-  markOnly?: boolean;
-  note: string;
-};
+type RemovalTarget = { id: string; channel: string; live: boolean; note: string };
 
 /** Removal for all or chosen Deliveries, saying per network whether it is permanent. */
 export function RemoveDialogButton({
@@ -303,11 +291,7 @@ export function RemoveDialogButton({
       )}
       {open ? (
         <Dialog
-          title={
-            single
-              ? `${deliveries[0].markOnly ? "Mark removed on" : deliveries[0].live ? "Remove from" : "Cancel for"} ${deliveries[0].channel}?`
-              : "Remove this Post"
-          }
+          title={single ? `${deliveries[0].live ? "Remove from" : "Cancel for"} ${deliveries[0].channel}?` : "Remove this Post"}
           description={single ? deliveries[0].note : "Choose the Channels to remove it from. Each one is removed on its own."}
           onClose={close}
           footer={
@@ -326,15 +310,7 @@ export function RemoveDialogButton({
                   disabled={pending || chosen.length === 0}
                   onClick={() => startTransition(async () => setReports(await removeAction(postId, chosen)))}
                 >
-                  {pending
-                    ? "Removing…"
-                    : single
-                      ? deliveries[0].markOnly
-                        ? "Mark removed"
-                        : deliveries[0].live
-                          ? "Remove"
-                          : "Cancel Delivery"
-                      : `Remove from ${chosen.length}`}
+                  {pending ? "Removing…" : single ? (deliveries[0].live ? "Remove" : "Cancel Delivery") : `Remove from ${chosen.length}`}
                 </button>
               </>
             )

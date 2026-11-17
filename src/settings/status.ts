@@ -109,7 +109,7 @@ export async function setupStatus(db: Db, now = new Date()): Promise<SetupItem[]
       optional: true,
       detail:
         instagramMissing.length === 0
-          ? "Set up. Instagram profiles can connect without a Facebook Page; the app cannot remove their posts."
+          ? "Set up. Instagram accounts in a business portfolio can connect without a Facebook Page."
           : `Optional, for Instagram profiles not linked to a Facebook Page. Add ${instagramMissing.join(" and ")} to .env.local (docs/setup.md, Instagram), then restart the app.`,
     },
     {

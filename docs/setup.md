@@ -92,15 +92,18 @@ shared Page with a linked Instagram profile becomes one Instagram Channel.
 
 A professional Instagram account that is not linked to a Page can connect with Meta's **Unified
 login** instead (decision record 0008; Meta's older "Instagram login" is not offered to new apps).
-Posting works the same, but **the app cannot remove these posts**: Unified login has no delete
-permission. Remove then only marks the Delivery removed and you delete the post in Instagram;
-Replace is not offered.
+Posting, Replace and Removal work the same as through Facebook. The account must belong to one of
+your business portfolios (Meta Business Suite > Settings > Accounts > Instagram accounts > Add).
 
 1. Unified login needs the Meta app to be owned by a business portfolio. In the Instagram use
    case, open **API setup with Unified login** and connect a portfolio.
-2. There, **Create new configuration** from the template (system-user token that never expires,
-   Instagram account required). Copy its **Configuration ID** into `INSTAGRAM_LOGIN_CONFIG_ID`. It
-   is not a secret; the login uses the Facebook app ID and secret.
+2. There, **Create new configuration** from the template, then edit it under **Facebook Login for
+   Business > Configurations**: assets **Instagram accounts** only (untick Ad accounts, or the login
+   offers to create an ad account), and permissions `instagram_basic`, `instagram_content_publish`,
+   `instagram_manage_contents` (for Removal), `instagram_manage_comments` and
+   `instagram_manage_messages`, with no ads permissions. Keep the system-user token that never
+   expires. Copy the **Configuration ID** into `INSTAGRAM_LOGIN_CONFIG_ID`. It is not a secret; the
+   login uses the Facebook app ID and secret.
 3. Under **Facebook Login for Business > Settings > Valid OAuth Redirect URIs**, add
    `APP_URL/api/channels/callback/instagram-login`.
 4. Under **App roles > Roles > Add People > Instagram Tester**, add the account, then accept the

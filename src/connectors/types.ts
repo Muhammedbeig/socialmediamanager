@@ -55,12 +55,8 @@ export type Capabilities = {
   fetchesMediaFromPublicUrl: boolean;
   /** Edit changes text only. `note` is shown where Edit is offered or refused. */
   edit: { text: boolean; note: string };
-  /**
-   * `note` is shown in the Removal confirmation. `manual`: the network does not let the app take
-   * the post down, so Removal only marks the Delivery removed and the Member deletes it on the
-   * network. Replace is then not offered, since it would leave the old post up.
-   */
-  removal: { permanent: boolean; note: string; manual?: boolean };
+  /** `note` is shown in the Removal confirmation. */
+  removal: { permanent: boolean; note: string };
 };
 
 /**

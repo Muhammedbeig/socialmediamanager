@@ -249,13 +249,12 @@ describe("Instagram Connector, connected directly with Unified login", () => {
     expect(paths()).toContain("POST /v27.0/ig1/media_publish");
   });
 
-  it("cannot remove: Removal only marks it removed and sends nothing to Instagram", async () => {
-    const rules = await instagram.capabilities(direct);
-    expect(rules.removal.manual).toBe(true);
-    expect((await instagram.capabilities(access("ig1"))).removal.manual).toBeUndefined();
+  it("removes the same way, with the business token", async () => {
+    answers.push({ body: { success: true } });
     const outcome = await instagram.remove(direct, { externalPostId: "media1", state: {} });
-    expect(calls).toHaveLength(0);
-    expect(outcome.note).toMatch(/delete the post yourself in the Instagram app/);
+    expect(paths()).toEqual(["DELETE /v27.0/media1"]);
+    expect(calls[0].url.searchParams.get("access_token")).toBe("TOKEN");
+    expect(outcome.permanent).toBe(true);
   });
 });
 

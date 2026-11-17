@@ -1,15 +1,13 @@
 import { FACEBOOK_GRAPH } from "../facebook/auth";
 import { type ContainerApi, publicUrl, publishThroughContainer } from "../meta/containers";
 import { type ContainerStatus, type Sleep, metaRequest, realSleep } from "../meta/http";
-import { type Capabilities, type ChannelAccess, type Connector, ConnectorError } from "../types";
+import { type Capabilities, type Connector, ConnectorError } from "../types";
 import { instagramAuth } from "./auth";
-import { instagramLoginOf } from "./login";
 
-// Instagram Connector, on graph.facebook.com. A Channel connects one of two ways (docs/adr/0008):
-// - through Facebook (default): the linked Page's token, with instagram_manage_contents, so it can
-//   remove posts.
-// - directly with Unified Login: the business's system user token, which has no delete permission,
-//   so Removal only marks the Delivery removed and the Member deletes the post in Instagram.
+// Instagram Connector, on graph.facebook.com. A Channel's token comes from one of two logins
+// (docs/adr/0008): through Facebook (the linked Page's token) or directly with Unified Login (the
+// business's system user token). Both carry instagram_content_publish and instagram_manage_contents,
+// so publishing and Removal work the same either way.
 // Checked against Meta's content publishing, IG User media and Instagram Media docs on 2026-11-17.
 
 export const instagramCapabilities: Capabilities = {
@@ -40,18 +38,6 @@ export const instagramCapabilities: Capabilities = {
   },
   removal: { permanent: true, note: "Removal from Instagram is permanent." },
 };
-
-const MANUAL_REMOVAL_NOTE =
-  "This profile connected directly, and Instagram does not let the app remove those posts. " +
-  "This only marks it removed here: delete the post yourself in the Instagram app.";
-
-/** Rules for a Channel connected directly with Unified Login. */
-export const instagramDirectCapabilities: Capabilities = {
-  ...instagramCapabilities,
-  removal: { permanent: true, manual: true, note: MANUAL_REMOVAL_NOTE },
-};
-
-const isDirect = (access: ChannelAccess) => instagramLoginOf(access.settings) === "direct";
 
 type PublishingLimit = { data?: { quota_usage?: number; config?: { quota_total?: number } }[] };
 
@@ -92,8 +78,8 @@ export function createInstagramConnector(options: { sleep?: Sleep } = {}): Conne
     kind: "api",
     label: "Instagram profile",
     baseCapabilities: instagramCapabilities,
-    async capabilities(access) {
-      return isDirect(access) ? instagramDirectCapabilities : instagramCapabilities;
+    async capabilities() {
+      return instagramCapabilities;
     },
     auth: instagramAuth,
     async publish(access, input) {
@@ -113,8 +99,6 @@ export function createInstagramConnector(options: { sleep?: Sleep } = {}): Conne
       return publishThroughContainer(api, access, input);
     },
     async remove(access, live) {
-      // Deleting needs instagram_manage_contents, which Unified Login does not offer.
-      if (isDirect(access)) return { permanent: true, note: MANUAL_REMOVAL_NOTE };
       await metaRequest(`${FACEBOOK_GRAPH}/${live.externalPostId}`, { method: "DELETE", accessToken: access.accessToken });
       return { permanent: true, note: instagramCapabilities.removal.note };
     },
