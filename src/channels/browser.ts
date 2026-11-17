@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { and, eq, sql } from "drizzle-orm";
-import { openPlainChrome, profileDir, withChannelBrowser, withChannelLock } from "@/connectors/browser/engine";
+import {
+  type SiteChecks,
+  openPlainChrome,
+  profileDir,
+  withChannelBrowser,
+  withChannelLock,
+} from "@/connectors/browser/engine";
 import { getConnector, getNetwork, networkName } from "@/connectors/registry";
 import type { Db } from "@/db/client";
 import { type Network, brands, channels } from "@/db/schema";
@@ -12,7 +18,8 @@ import { type DesktopNotifier, raiseAlert } from "@/notify";
 // worker opens that Channel's own Chrome window at the network's login page. The Member logs in
 // there once and closes the window; its profile keeps the session for later Deliveries.
 
-export const LOGIN_WAIT_MS = 15 * 60_000;
+/** How long the app waits for a login window to be closed. The window itself is never killed. */
+export const LOGIN_WAIT_MS = 2 * 60 * 60_000;
 
 function cleanHandle(raw: string): string | null {
   const handle = raw.trim().replace(/^@/, "").replace(/^https?:\/\/[^/]+\//, "").replace(/\/.*$/, "");
@@ -84,9 +91,10 @@ export async function forgetBrowserProfile(channelId: string) {
 }
 
 /**
- * Runs one waiting login request, if any. Opens a plain Chrome window (not under automation, so
- * "Sign in with Google" works) on the Channel's profile at the login page. Once the Member closes
- * it, or after 15 minutes, the profile is checked for a logged-in session.
+ * Starts one waiting login request, if any, and returns without waiting for it, so several
+ * Channels' windows can be open at once (each on its own profile). Opens a plain Chrome window
+ * (not under automation, so "Sign in with Google" works) at the login page. Once the Member closes
+ * it, the profile is checked for a logged-in session.
  */
 export async function runNextLogin(db: Db, options: { desktop?: DesktopNotifier; log?: (m: string) => void } = {}) {
   const [channel] = await db
@@ -104,7 +112,20 @@ export async function runNextLogin(db: Db, options: { desktop?: DesktopNotifier;
     .set({ settings: sql`(${channels.settings} - 'loginRequestedAt') || jsonb_build_object('loginStartedAt', ${new Date().toISOString()}::text)` })
     .where(eq(channels.id, channel.id));
   if (!site) return true;
+  void finishLogin(db, channel.id, label, site, options).catch((cause) =>
+    options.log?.(`Login for ${label} failed: ${cause instanceof Error ? cause.message : String(cause)}`),
+  );
+  return true;
+}
 
+async function finishLogin(
+  db: Db,
+  channelId: string,
+  label: string,
+  site: SiteChecks,
+  options: { desktop?: DesktopNotifier; log?: (m: string) => void },
+) {
+  const channel = { id: channelId };
   let error: string | null = null;
   try {
     const ended = await withChannelLock(channel.id, 60_000, async () => {
@@ -120,14 +141,13 @@ export async function runNextLogin(db: Db, options: { desktop?: DesktopNotifier;
       );
       return openPlainChrome(channel.id, site.loginUrl, LOGIN_WAIT_MS);
     });
-    const loggedIn = await withChannelBrowser(channel.id, async (_page, context) => site.loggedIn(context), {
-      lockWaitMs: 60_000,
-    });
-    if (!loggedIn) {
-      error =
-        ended === "timed_out"
-          ? "No login within 15 minutes, so the window was closed."
-          : "The window was closed before the login finished.";
+    if (ended === "still_open") {
+      error = "The window was still open after 2 hours. Close it, then use Log in again.";
+    } else {
+      const loggedIn = await withChannelBrowser(channel.id, async (_page, context) => site.loggedIn(context), {
+        lockWaitMs: 60_000,
+      });
+      if (!loggedIn) error = "The window was closed before the login finished.";
     }
   } catch (cause) {
     error = cause instanceof Error ? cause.message : String(cause);
@@ -149,5 +169,4 @@ export async function runNextLogin(db: Db, options: { desktop?: DesktopNotifier;
       .where(eq(channels.id, channel.id));
     options.log?.(`${label} is logged in.`);
   }
-  return true;
 }

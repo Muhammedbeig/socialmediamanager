@@ -49,7 +49,7 @@ export async function startWorker(options: WorkerOptions = {}): Promise<{ stop()
   await refresh();
   const refreshTimer = setInterval(refresh, 6 * 60 * 60_000);
 
-  // Browser Channels waiting to log in: open their window, one at a time.
+  // Browser Channels waiting to log in: open each one's window (they can be open together).
   let loggingIn = false;
   const logins = async () => {
     if (loggingIn) return;

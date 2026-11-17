@@ -35,9 +35,11 @@ export function chromePath(): string | null {
 
 /**
  * Opens a plain Chrome window (not under automation) on this Channel's profile at `url`, and
- * resolves once the Member closes it. Closes it after `maxMs`. Call inside withChannelLock.
+ * resolves "closed" once the Member closes it. The window is never killed: killing Chrome can lose
+ * a login it has not written to disk yet. After `maxMs` this stops waiting ("still_open") and
+ * leaves the window as it is. Call inside withChannelLock.
  */
-export async function openPlainChrome(channelId: string, url: string, maxMs: number): Promise<"closed" | "timed_out"> {
+export async function openPlainChrome(channelId: string, url: string, maxMs: number): Promise<"closed" | "still_open"> {
   const chrome = chromePath();
   if (!chrome) throw new Error("Google Chrome is not installed.");
   const dir = profileDir(channelId);
@@ -48,10 +50,9 @@ export async function openPlainChrome(channelId: string, url: string, maxMs: num
       [`--user-data-dir=${dir}`, "--no-first-run", "--no-default-browser-check", "--window-size=1280,900", url],
       { stdio: "ignore" },
     );
-    let timedOut = false;
     const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill();
+      child.unref();
+      resolve("still_open");
     }, maxMs);
     child.once("error", (error) => {
       clearTimeout(timer);
@@ -59,7 +60,7 @@ export async function openPlainChrome(channelId: string, url: string, maxMs: num
     });
     child.once("exit", () => {
       clearTimeout(timer);
-      resolve(timedOut ? "timed_out" : "closed");
+      resolve("closed");
     });
   });
 }
