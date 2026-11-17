@@ -29,7 +29,14 @@ export const pinterestCapabilities: Capabilities = {
   // The caption becomes the Pin's description.
   caption: { maxChars: 500 },
   fields: [
-    { key: "board", label: "Board", kind: "text", required: true, maxLength: 180, help: "Exactly as the board is named on Pinterest." },
+    {
+      key: "board",
+      label: "Board",
+      kind: "text",
+      required: true,
+      maxLength: 180,
+      help: "Exactly as the board is named on Pinterest. A board that does not exist yet is created.",
+    },
     { key: "title", label: "Pin title", kind: "text", maxLength: 100 },
     { key: "link", label: "Link", kind: "text", maxLength: 2048, help: "Where the Pin leads when clicked (optional)." },
   ],
@@ -113,8 +120,35 @@ export const pinterestConnector: Connector = {
         await boardButton.click();
         const search = await firstVisible([page.getByPlaceholder(/search/i), page.locator('input[id*="search" i]')], "board search");
         await search.fill(board);
-        const option = page.locator('[data-test-id="board-row"], [role="option"], [role="button"]').filter({ hasText: board });
-        await (await expectVisible(option, `the board "${board}"`, 15_000)).click();
+        const option = page
+          .locator('[data-test-id="board-row"], [role="option"], [role="button"]')
+          .filter({ hasText: new RegExp(`^\\s*${board.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i") });
+        const exists = await option
+          .first()
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false);
+        if (exists) {
+          await option.first().click();
+        } else {
+          // No board by that name yet: create it from the board picker; the new board is selected.
+          const create = await firstVisible(
+            [page.getByRole("button", { name: /create board/i }), page.getByText(/^create board$/i)],
+            "Create board in the board picker",
+          );
+          await create.click();
+          const name = await firstVisible(
+            [page.locator("#boardEditName"), page.getByRole("textbox", { name: /name/i }), page.getByPlaceholder(/places to go|name/i)],
+            "the new board's name field",
+          );
+          await name.fill(board);
+          await (await expectVisible(page.getByRole("button", { name: /^create$/i }).last(), "Create for the new board")).click();
+        }
+        await expectVisible(
+          page.locator('[data-test-id="board-dropdown-select-button"]').filter({ hasText: board }),
+          `the board "${board}" chosen`,
+          30_000,
+        );
 
         const publish = await expectVisible(page.getByRole("button", { name: /^publish$/i }), "Publish button", 15 * 60_000);
         await clearChallenges(page, context, pinterestSite, access.attention, { goToLogin: false });
