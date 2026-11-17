@@ -12,8 +12,6 @@ export const instagramAuth = createFacebookLogin({
     "instagram_manage_contents",
     "pages_show_list",
     "pages_read_engagement",
-    // Pages owned by a business portfolio, and their Instagram profiles, are only listed with it.
-    "business_management",
   ],
   pageFields: "id,name,access_token,instagram_business_account{id,username,name}",
   toTargets: (page) => {

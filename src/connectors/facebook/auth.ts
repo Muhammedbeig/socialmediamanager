@@ -26,11 +26,15 @@ export function createFacebookLogin(options: {
   return {
     authorizeUrl({ redirectUri, state }) {
       const url = new URL("https://www.facebook.com/v27.0/dialog/oauth");
+      // Pages owned by a business portfolio are only listed with business_management, which makes
+      // Facebook ask the Member to share a whole portfolio. Off unless FACEBOOK_BUSINESS_PAGES=1.
+      const scopes =
+        process.env.FACEBOOK_BUSINESS_PAGES === "1" ? [...options.scopes, "business_management"] : options.scopes;
       url.search = new URLSearchParams({
         client_id: requireEnv("FACEBOOK_APP_ID"),
         redirect_uri: redirectUri,
         response_type: "code",
-        scope: options.scopes.join(","),
+        scope: scopes.join(","),
         state,
       }).toString();
       return url.toString();
@@ -75,8 +79,7 @@ export function createFacebookLogin(options: {
 }
 
 export const facebookAuth = createFacebookLogin({
-  // business_management: Pages owned by a business portfolio are only listed with it.
-  scopes: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement", "business_management"],
+  scopes: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "pages_manage_engagement"],
   pageFields: "id,name,access_token",
   toTargets: (page) => [
     { externalId: page.id, displayName: page.name, handle: null, accessToken: page.access_token, expiresAt: null },
