@@ -68,11 +68,10 @@ export const xConnector: Connector = {
         await clearChallenges(page, context, xSite, access.attention);
         if (!page.url().includes("/compose/post")) await page.goto(`${X}/compose/post`, { waitUntil: "domcontentloaded" });
 
-        // x.com/compose/post opens the composer as a dialog over the home timeline, which has a
-        // composer of its own. Everything happens inside the dialog, so the media and the text
-        // never end up in different composers.
-        const composer = page.locator('[role="dialog"]').filter({ has: page.locator('[data-testid="tweetTextarea_0"]') });
-        await expectVisible(composer, "post composer");
+        // x.com/compose/post opens the composer as a pop-up over the home timeline, which has a
+        // composer of its own. X draws pop-ups inside #layers, so everything happens there and the
+        // media and the text never end up in different composers.
+        const composer = page.locator("#layers");
         const editor = await expectVisible(composer.locator('[data-testid="tweetTextarea_0"]'), "post editor");
         if (input.media.length > 0) {
           const fileInput = composer.locator('input[data-testid="fileInput"]').first();
