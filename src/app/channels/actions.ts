@@ -1,7 +1,7 @@
 "use server";
 
 import { field, runFormAction } from "@/app/form-action";
-import { addBrowserChannel, forgetBrowserProfile, requestLogin, setPremium } from "@/channels/browser";
+import { addBrowserChannel, forgetBrowserProfile, requestLogin, setPremium, setShowWindow } from "@/channels/browser";
 import { disconnectChannel, moveChannel } from "@/channels/service";
 import { getDb } from "@/db/client";
 
@@ -38,6 +38,16 @@ export async function loginAgainAction(formData: FormData) {
   await runFormAction("/channels", async () => {
     const channel = await requestLogin(getDb(), field(formData, "channelId"));
     return `A Chrome window for ${channel.displayName} opens within a few seconds: log in there, then close it.`;
+  });
+}
+
+export async function setShowWindowAction(formData: FormData) {
+  await runFormAction("/channels", async () => {
+    const show = field(formData, "show") === "1";
+    const channel = await setShowWindow(getDb(), field(formData, "channelId"), show);
+    return show
+      ? `${channel.displayName}'s posting window now shows on screen while it works.`
+      : `${channel.displayName}'s posting window now stays minimized.`;
   });
 }
 

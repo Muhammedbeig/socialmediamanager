@@ -30,7 +30,7 @@ Platform limits change often. Before building or changing a Connector, check the
 
 ### Browser Connector guardrails
 
-- Always headed, at human pace: Deliveries to the same network go out one at a time, 3 minutes apart by default.
+- Always headed, at human pace: Deliveries to the same network go out one at a time, 3 minutes apart by default. Posting windows open minimized unless the Member turns on Show window for that Channel; a login check always brings the window forward.
 - Login checks, codes and CAPTCHAs belong to the Member. On detection, set the Delivery to Needs attention, notify, bring that Channel's window forward, wait, then resume.
 - The browser stays honest: no stealth plugins, fingerprint spoofing, CAPTCHA solvers or simulated human behaviour.
 - Logins happen in a plain Chrome window on the Channel's profile that the app starts but does not control, so "Sign in with Google" works. Posting windows reuse that saved session.

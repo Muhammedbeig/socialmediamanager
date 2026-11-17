@@ -164,6 +164,10 @@ publisher must be running). It is an ordinary Chrome window the app does not con
 with Google" works there. That window's profile keeps the login for later Posts, separate from
 your own Chrome; posting windows reuse it.
 
+Posting windows open minimized, so they stay out of the way. To watch one work, press **Show
+window** on its row; it comes on screen within a few seconds, even in the middle of a post, and
+**Hide window** minimizes it again. A window that needs a code or CAPTCHA always comes forward.
+
 If a site logs the account out later, the Post waits on **Needs attention** with the posting
 window open. Google refuses to sign in inside that automated window, so log in there with the
 site's own username and password, or use **Log in again** on the Channels screen afterwards.

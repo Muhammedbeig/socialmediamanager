@@ -23,6 +23,7 @@ import {
   loginAgainAction,
   moveChannelAction,
   setPremiumAction,
+  setShowWindowAction,
 } from "./actions";
 
 const dateFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -221,6 +222,19 @@ export default async function ChannelsPage({
                                   <input type="hidden" name="channelId" value={channel.id} />
                                   <button type="submit" className={reconnect ? buttonClass.primary : buttonClass.secondary}>
                                     {reconnect ? "Log in" : "Log in again"}
+                                  </button>
+                                </form>
+                              ) : null}
+                              {browser ? (
+                                <form action={setShowWindowAction}>
+                                  <input type="hidden" name="channelId" value={channel.id} />
+                                  <input type="hidden" name="show" value={channel.settings.showWindow === true ? "0" : "1"} />
+                                  <button
+                                    type="submit"
+                                    title="Posting windows open minimized. Show window puts this one on screen while it works, to watch it."
+                                    className={buttonClass.secondary}
+                                  >
+                                    {channel.settings.showWindow === true ? "Hide window" : "Show window"}
                                   </button>
                                 </form>
                               ) : null}

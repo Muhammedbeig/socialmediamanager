@@ -77,6 +77,20 @@ export async function setPremium(db: Db, channelId: string, premium: boolean) {
   return channel;
 }
 
+/**
+ * Show window: whether this Channel's posting window is on screen, to watch the automation.
+ * Off by default (the window opens minimized). Takes effect within seconds, even mid-post.
+ */
+export async function setShowWindow(db: Db, channelId: string, show: boolean) {
+  const [channel] = await db
+    .update(channels)
+    .set({ settings: sql`${channels.settings} || jsonb_build_object('showWindow', ${show}::boolean)` })
+    .where(and(eq(channels.id, channelId), eq(channels.connectorKind, "browser")))
+    .returning();
+  if (!channel) throw new UserError("That Channel no longer exists.");
+  return channel;
+}
+
 /** At start-up: a login window from before a restart is gone, so it no longer counts as open. */
 export async function clearStaleLogins(db: Db) {
   await db

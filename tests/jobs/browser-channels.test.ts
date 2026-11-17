@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { addBrowserChannel, requestLogin, setPremium } from "@/channels/browser";
+import { addBrowserChannel, requestLogin, setPremium, setShowWindow } from "@/channels/browser";
 import { fakeConnector, fakeNetwork } from "@/connectors/fake";
 import { channelCapabilities } from "@/connectors/registry";
 import type { Connector } from "@/connectors/types";
@@ -200,5 +200,20 @@ describe("browser Channels", () => {
     const rules = (await channelCapabilities(premium))!;
     expect(rules.caption.maxChars).toBe(25_000);
     expect(rules.edit.text).toBe(true);
+  });
+
+  it("keeps the posting window minimized until Show window is chosen, and only for browser Channels", async () => {
+    const { brand } = await setup([]);
+    const channel = await addBrowserChannel(db, { brandId: brand.id, network: "tiktok", displayName: "Acme", handle: "" });
+    expect(channel.settings.showWindow).toBeUndefined();
+    const shown = await setShowWindow(db, channel.id, true);
+    expect(shown.settings.showWindow).toBe(true);
+    expect(typeof shown.settings.loginRequestedAt).toBe("string");
+    expect((await setShowWindow(db, channel.id, false)).settings.showWindow).toBe(false);
+    const [api] = await db
+      .insert(channels)
+      .values({ brandId: brand.id, network: "facebook", connectorKind: "api", displayName: "Page", externalId: "p1" })
+      .returning();
+    await expect(setShowWindow(db, api.id, true)).rejects.toThrow(/no longer exists/);
   });
 });

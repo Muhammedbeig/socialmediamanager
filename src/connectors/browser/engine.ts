@@ -65,8 +65,15 @@ export async function openPlainChrome(channelId: string, url: string, maxMs: num
   });
 }
 
-/** Holds a database lock for one Channel's browser, so no two tasks open its profile at once. */
-export async function withChannelLock<T>(channelId: string, waitMs: number, fn: () => Promise<T>): Promise<T> {
+/**
+ * Holds a database lock for one Channel's browser, so no two tasks open its profile at once.
+ * `fn` gets the lock's own database connection, for small reads while the task runs.
+ */
+export async function withChannelLock<T>(
+  channelId: string,
+  waitMs: number,
+  fn: (client: Client) => Promise<T>,
+): Promise<T> {
   const client = new Client({ connectionString: requireEnv("DATABASE_URL") });
   await client.connect();
   try {
@@ -81,7 +88,7 @@ export async function withChannelLock<T>(channelId: string, waitMs: number, fn: 
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     try {
-      return await fn();
+      return await fn(client);
     } finally {
       await client.query("select pg_advisory_unlock(hashtext($1))", [key]).catch(() => {});
     }
@@ -92,8 +99,32 @@ export async function withChannelLock<T>(channelId: string, waitMs: number, fn: 
 
 export type BrowserTask<T> = (page: Page, context: BrowserContext) => Promise<T>;
 
+/** Minimizes the window, or restores it and brings it to the front. */
+export async function setWindowShown(page: Page, shown: boolean): Promise<void> {
+  try {
+    const session = await page.context().newCDPSession(page);
+    const { windowId } = await session.send("Browser.getWindowForTarget");
+    await session.send("Browser.setWindowBounds", { windowId, bounds: { windowState: shown ? "normal" : "minimized" } });
+    await session.detach().catch(() => {});
+    if (shown) await page.bringToFront();
+  } catch {
+    // Showing or hiding the window never fails the task.
+  }
+}
+
+/** The Channel's "Show window" choice: whether its posting window is on screen. */
+async function showWindowSetting(client: Client, channelId: string): Promise<boolean> {
+  const { rows } = await client.query<{ show: boolean | null }>(
+    "select (settings->>'showWindow')::boolean as show from channels where id = $1",
+    [channelId],
+  );
+  return rows[0]?.show === true;
+}
+
 /**
  * Opens this Channel's own Chrome window, runs the task, and closes the window.
+ * The window starts minimized unless the Member chose Show window for this Channel; switching
+ * that on or off while the task runs shows or hides the window within a few seconds.
  * `screenshotName` names the screenshot saved when the task fails.
  */
 export async function withChannelBrowser<T>(
@@ -101,7 +132,7 @@ export async function withChannelBrowser<T>(
   task: BrowserTask<T>,
   options: { lockWaitMs?: number; screenshotName?: string } = {},
 ): Promise<T> {
-  return withChannelLock(channelId, options.lockWaitMs ?? 10 * 60_000, async () => {
+  return withChannelLock(channelId, options.lockWaitMs ?? 10 * 60_000, async (client) => {
     const { chromium } = await import("playwright");
     const dir = profileDir(channelId);
     await mkdir(dir, { recursive: true });
@@ -111,7 +142,8 @@ export async function withChannelBrowser<T>(
         channel: "chrome",
         headless: false,
         viewport: null,
-        args: ["--window-size=1280,900"],
+        // A minimized window keeps rendering and running timers, so pages behave as when shown.
+        args: ["--window-size=1280,900", "--disable-backgrounding-occluded-windows", "--disable-background-timer-throttling"],
       });
     } catch (cause) {
       throw new ConnectorError(
@@ -121,6 +153,19 @@ export async function withChannelBrowser<T>(
       );
     }
     const page = context.pages()[0] ?? (await context.newPage());
+    let shown = await showWindowSetting(client, channelId).catch(() => false);
+    if (!shown) await setWindowShown(page, false);
+    // Follows the Show window button while the task runs. Only a change acts, so a window
+    // brought forward for a login check is never hidden again by this.
+    const follow = setInterval(() => {
+      showWindowSetting(client, channelId)
+        .then(async (wanted) => {
+          if (wanted === shown) return;
+          shown = wanted;
+          await setWindowShown(page, wanted);
+        })
+        .catch(() => {});
+    }, 3000);
     try {
       return await task(page, context);
     } catch (error) {
@@ -137,6 +182,7 @@ export async function withChannelBrowser<T>(
       }
       throw error;
     } finally {
+      clearInterval(follow);
       await context.close().catch(() => {});
     }
   });
@@ -269,7 +315,7 @@ export async function clearChallenges(
   if (options.goToLogin !== false && !(await site.loggedIn(context))) {
     await page.goto(site.loginUrl).catch(() => {});
   }
-  await page.bringToFront().catch(() => {});
+  await setWindowShown(page, true);
   const loggedOut = !(await site.loggedIn(context));
   await attention.needed(
     loggedOut ? "Log in to this account in its browser window." : "Clear the check (code or CAPTCHA) in the browser window.",
@@ -280,7 +326,7 @@ export async function clearChallenges(
     if (Date.now() - started > ATTENTION_WAIT_MS) {
       throw new ConnectorError("rejected", "Nobody cleared the login check within an hour. Retry when you are at the laptop.");
     }
-    if (await attention.bringForwardRequested()) await page.bringToFront().catch(() => {});
+    if (await attention.bringForwardRequested()) await setWindowShown(page, true);
     await page.waitForTimeout(3000);
   }
   await attention.resolved();
