@@ -195,7 +195,7 @@ export default async function ChannelsPage({
                                     ? `Login lasts until ${dateFormat.format(channel.tokenExpiresAt)}`
                                     : "Login does not expire"}
                                 {channel.network === "instagram"
-                                  ? channel.settings.login === "instagram"
+                                  ? channel.settings.login === "direct"
                                     ? " · Connected directly: delete removed posts in Instagram yourself"
                                     : " · Connected through Facebook"
                                   : ""}

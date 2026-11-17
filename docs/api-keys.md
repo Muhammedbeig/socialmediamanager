@@ -10,7 +10,7 @@ In every redirect URL below, `APP_URL` means the value in `.env.local`, normally
 | For | What to get | Where | Put in `.env.local` |
 | --- | --- | --- | --- |
 | Facebook Pages and Instagram | App ID and App secret of a Meta app (development mode) | <https://developers.facebook.com/apps> | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` |
-| Instagram directly (optional, no Facebook Page; the app cannot remove these posts) | Instagram app ID and Instagram app secret (same Meta app, Instagram use case, API setup with Instagram login) | <https://developers.facebook.com/apps> | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` |
+| Instagram directly (optional, no Facebook Page; the app cannot remove these posts) | Configuration ID of a Unified login configuration (same Meta app, Instagram use case, API setup with Unified login). Not a secret | <https://developers.facebook.com/apps> | `INSTAGRAM_LOGIN_CONFIG_ID` |
 | Threads | Threads app ID and Threads app secret (same Meta app, Threads use case) | <https://developers.facebook.com/apps> | `THREADS_APP_ID`, `THREADS_APP_SECRET` |
 | Instagram and Threads media | Cloudflare R2 bucket, its public URL, and an R2 API token | <https://dash.cloudflare.com> → R2 Object Storage | `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_BASE_URL` |
 | LinkedIn | Client ID and Primary Client Secret of a LinkedIn app | <https://www.linkedin.com/developers/apps> | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` (and `LINKEDIN_PAGES=1` for company Pages) |
@@ -21,8 +21,7 @@ In every redirect URL below, `APP_URL` means the value in `.env.local`, normally
 
 | Where | URL |
 | --- | --- |
-| Meta app → Facebook Login for Business → Valid OAuth Redirect URIs | `APP_URL/api/channels/callback/facebook` and `APP_URL/api/channels/callback/instagram` |
-| Meta app → Instagram use case → API setup with Instagram login → Business login settings | `APP_URL/api/channels/callback/instagram-login` |
+| Meta app → Facebook Login for Business → Valid OAuth Redirect URIs | `APP_URL/api/channels/callback/facebook`, `APP_URL/api/channels/callback/instagram` and `APP_URL/api/channels/callback/instagram-login` |
 | Meta app → Threads use case → redirect callback URLs | `APP_URL/api/channels/callback/threads` |
 | LinkedIn app → Auth → Authorized redirect URLs | `APP_URL/api/channels/callback/linkedin` |
 | Google OAuth client → Authorized redirect URIs | `APP_URL/api/channels/callback/youtube` |

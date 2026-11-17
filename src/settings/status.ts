@@ -56,7 +56,7 @@ export async function setupStatus(db: Db, now = new Date()): Promise<SetupItem[]
   const [heartbeat, ffmpeg] = await Promise.all([databaseOk ? lastHeartbeat(db) : null, ffmpegVersion()]);
   const metaMissing = missing(["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"]);
   const threadsMissing = missing(["THREADS_APP_ID", "THREADS_APP_SECRET"]);
-  const instagramMissing = missing(["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"]);
+  const instagramMissing = missing(["INSTAGRAM_LOGIN_CONFIG_ID"]);
   const linkedinMissing = missing(["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"]);
   const googleMissing = missing(["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]);
   const r2Missing = missingR2Settings();
@@ -104,7 +104,7 @@ export async function setupStatus(db: Db, now = new Date()): Promise<SetupItem[]
     },
     {
       id: "instagram-login",
-      name: "Instagram directly (Instagram login)",
+      name: "Instagram directly (Unified login)",
       ok: instagramMissing.length === 0,
       optional: true,
       detail:

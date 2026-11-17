@@ -232,11 +232,11 @@ describe("Instagram Connector", () => {
   });
 });
 
-describe("Instagram Connector, connected directly with Instagram login", () => {
+describe("Instagram Connector, connected directly with Unified login", () => {
   const instagram = createInstagramConnector({ sleep: noSleep });
-  const direct = { ...access("ig1"), settings: { login: "instagram" } };
+  const direct = { ...access("ig1"), settings: { login: "direct" } };
 
-  it("publishes on graph.instagram.com", async () => {
+  it("publishes the same way, on graph.facebook.com", async () => {
     answers.push(
       { body: { data: [{ quota_usage: 0, config: { quota_total: 100 } }] } },
       { body: { id: "container1" } },
@@ -245,7 +245,7 @@ describe("Instagram Connector, connected directly with Instagram login", () => {
       { body: {} },
     );
     await instagram.publish(direct, input({ format: "image", media: [hosted("https://x/1.jpg")] }));
-    expect(calls.every((c) => c.url.origin === "https://graph.instagram.com")).toBe(true);
+    expect(calls.every((c) => c.url.origin === "https://graph.facebook.com")).toBe(true);
     expect(paths()).toContain("POST /v27.0/ig1/media_publish");
   });
 

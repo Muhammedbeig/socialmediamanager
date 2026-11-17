@@ -1,45 +1,70 @@
+import { requireEnv } from "@/env";
+import { FACEBOOK_GRAPH } from "../facebook/auth";
 import { metaRequest } from "../meta/http";
-import { createProfileLoginAuth } from "../meta/profile-login";
+import type { ChannelTarget, ConnectorAuth } from "../types";
 
-// Instagram API with Instagram Login: connects an Instagram professional profile directly, with no
-// Facebook Page (docs/adr/0008). Publishes on graph.instagram.com, but cannot delete posts.
-// Checked against Meta's "Business Login for Instagram", content publishing and Instagram Media
-// docs on 2026-11-17.
+// Instagram API with Unified Login: connects Instagram professional accounts directly, with no
+// Facebook Page (docs/adr/0008). It is Facebook Login for Business with a configuration
+// (INSTAGRAM_LOGIN_CONFIG_ID) whose assets are Instagram accounts. The Member picks a business
+// portfolio and the Instagram accounts to share; the app gets a business integration system user
+// token that never expires (set in the configuration) and publishes on graph.facebook.com.
+// Meta replaced "Instagram Login" with this for newer apps. Its permissions have no delete
+// permission, so posts on these Channels cannot be removed by the app.
+// Checked against Meta's "Instagram API with Unified Login" get-started, authentication and
+// permissions docs on 2026-11-17.
 
-export const INSTAGRAM_GRAPH = "https://graph.instagram.com/v27.0";
-
-/** Saved in a Channel's settings: which login an Instagram Channel connected with. */
-export type InstagramLogin = "facebook" | "instagram";
+/** Saved in a Channel's settings: which way an Instagram Channel connected. */
+export type InstagramLogin = "facebook" | "direct";
 
 export function instagramLoginOf(settings: Record<string, unknown>): InstagramLogin {
-  return settings.login === "instagram" ? "instagram" : "facebook";
+  return settings.login === "direct" ? "direct" : "facebook";
 }
 
-type InstagramProfile = { user_id?: string; id?: string; username?: string; name?: string };
+type InstagramAccount = { id: string; username?: string; name?: string };
+type AccountList = { data: InstagramAccount[]; paging?: { next?: string } };
 
-export const instagramDirectAuth = createProfileLoginAuth({
-  appIdEnv: "INSTAGRAM_APP_ID",
-  appSecretEnv: "INSTAGRAM_APP_SECRET",
-  authorizeUrl: "https://www.instagram.com/oauth/authorize",
-  codeTokenUrl: "https://api.instagram.com/oauth/access_token",
-  exchangeUrl: "https://graph.instagram.com/access_token",
-  exchangeGrant: "ig_exchange_token",
-  refreshUrl: "https://graph.instagram.com/refresh_access_token",
-  refreshGrant: "ig_refresh_token",
-  scopes: ["instagram_business_basic", "instagram_business_content_publish"],
-  async loadProfile(accessToken, userId) {
-    const answer = await metaRequest<InstagramProfile | { data: InstagramProfile[] }>(
-      `${INSTAGRAM_GRAPH}/me?fields=user_id,username,name`,
-      { bearer: accessToken },
-    );
-    const profile = "data" in answer ? answer.data[0] : answer;
-    const username = profile.username ?? null;
-    return {
-      // `user_id` is the professional account ID the publishing endpoints take. It is the same ID
-      // the Facebook route finds, so one profile stays one Channel whichever way it connects.
-      externalId: String(profile.user_id ?? profile.id ?? userId),
-      displayName: profile.name || username || "Instagram profile",
-      handle: username,
-    };
+export const instagramDirectAuth: ConnectorAuth = {
+  authorizeUrl({ redirectUri, state }) {
+    const url = new URL("https://www.facebook.com/v27.0/dialog/oauth");
+    url.search = new URLSearchParams({
+      client_id: requireEnv("FACEBOOK_APP_ID"),
+      config_id: requireEnv("INSTAGRAM_LOGIN_CONFIG_ID"),
+      redirect_uri: redirectUri,
+      response_type: "code",
+      state,
+    }).toString();
+    return url.toString();
   },
-});
+
+  async exchangeCode({ code, redirectUri }) {
+    const tokenUrl = new URL(`${FACEBOOK_GRAPH}/oauth/access_token`);
+    tokenUrl.search = new URLSearchParams({
+      client_id: requireEnv("FACEBOOK_APP_ID"),
+      client_secret: requireEnv("FACEBOOK_APP_SECRET"),
+      redirect_uri: redirectUri,
+      code,
+    }).toString();
+    const { access_token: token } = await metaRequest<{ access_token: string }>(tokenUrl);
+
+    // `/me` is the business's system user, not a profile: the shared accounts are listed here.
+    const targets: ChannelTarget[] = [];
+    let next: string | undefined = `${FACEBOOK_GRAPH}/me/assigned_instagram_accounts?fields=id,username,name&limit=100`;
+    let accessToken: string | undefined = token;
+    while (next) {
+      const page: AccountList = await metaRequest<AccountList>(next, { accessToken });
+      for (const account of page.data) {
+        targets.push({
+          externalId: account.id,
+          displayName: account.name || account.username || "Instagram profile",
+          handle: account.username ?? null,
+          accessToken: token,
+          expiresAt: null,
+        });
+      }
+      next = page.paging?.next;
+      // The `next` link already carries the token.
+      accessToken = undefined;
+    }
+    return targets;
+  },
+};

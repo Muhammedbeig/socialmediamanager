@@ -90,22 +90,25 @@ shared Page with a linked Instagram profile becomes one Instagram Channel.
 
 #### Instagram directly (optional, no Facebook Page)
 
-A professional Instagram profile that is not linked to a Page can connect with Instagram's own
-login instead (decision record 0008). Posting works the same, but **the app cannot remove these
-posts**: Meta allows deleting only through Facebook Login. Remove then only marks the Delivery
-removed and you delete the post in Instagram; Replace is not offered.
+A professional Instagram account that is not linked to a Page can connect with Meta's **Unified
+login** instead (decision record 0008; Meta's older "Instagram login" is not offered to new apps).
+Posting works the same, but **the app cannot remove these posts**: Unified login has no delete
+permission. Remove then only marks the Delivery removed and you delete the post in Instagram;
+Replace is not offered.
 
-1. In the Meta app's Instagram use case, open **API setup with Instagram login**. Add the
-   permissions `instagram_business_basic` and `instagram_business_content_publish`.
-2. Under **Set up Instagram business login > Business login settings**, add the redirect URL
+1. Unified login needs the Meta app to be owned by a business portfolio. In the Instagram use
+   case, open **API setup with Unified login** and connect a portfolio.
+2. There, **Create new configuration** from the template (system-user token that never expires,
+   Instagram account required). Copy its **Configuration ID** into `INSTAGRAM_LOGIN_CONFIG_ID`. It
+   is not a secret; the login uses the Facebook app ID and secret.
+3. Under **Facebook Login for Business > Settings > Valid OAuth Redirect URIs**, add
    `APP_URL/api/channels/callback/instagram-login`.
-3. Copy the **Instagram app ID** and **Instagram app secret** shown there into `INSTAGRAM_APP_ID` and
-   `INSTAGRAM_APP_SECRET`. They differ from the Facebook ones.
-4. Under **App roles > Roles > Add People > Instagram Tester**, add the profile, then accept the
-   invite in Instagram: Settings > Website permissions > Apps and websites > Tester invites.
+4. Under **App roles > Roles > Add People > Instagram Tester**, add the account, then accept the
+   invite in Instagram on the web: Settings > Website permissions > Apps and websites > Tester invites.
 
-Then use **Connect Instagram directly**. Its login lasts 60 days and the app extends it on its
-own. A profile connected one way and later the other stays one Channel and switches over.
+Then use **Connect Instagram directly**: pick the business portfolio and the Instagram accounts
+to share. Each becomes a Channel; the login does not expire. An account connected one way and
+later the other stays one Channel and switches over.
 
 ### Threads
 

@@ -111,7 +111,7 @@ describe("connecting Channels", () => {
   it("records which way a Channel connected, and switches it when the same profile connects the other way", async () => {
     const brand = await createBrand(db, "Acme");
     const viaPage: NetworkEntry = { ...fakeEntry, channelSettings: { login: "facebook" } };
-    const direct: NetworkEntry = { ...fakeEntry, key: "fake-direct", channelSettings: { login: "instagram" } };
+    const direct: NetworkEntry = { ...fakeEntry, key: "fake-direct", channelSettings: { login: "direct" } };
 
     await completeConnect(db, viaPage, { brandId: brand.id, code: "c", appUrl: APP_URL });
     expect((await db.select().from(channels))[0].settings).toEqual({ login: "facebook" });
@@ -120,7 +120,7 @@ describe("connecting Channels", () => {
     expect(result.reconnected).toEqual(["Fake profile"]);
     const rows = await db.select().from(channels);
     expect(rows).toHaveLength(1);
-    expect(rows[0].settings).toEqual({ login: "instagram" });
+    expect(rows[0].settings).toEqual({ login: "direct" });
 
     const { url } = beginConnect(direct, APP_URL);
     expect(new URL(url).pathname).toBe("/api/channels/callback/fake-direct");

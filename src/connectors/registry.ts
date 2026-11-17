@@ -54,16 +54,16 @@ const ENTRIES: NetworkEntry[] = [
     requiredEnv: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
   },
   {
-    // Instagram directly with Instagram Login (docs/adr/0008): no Page needed, but no Removal.
+    // Instagram directly with Unified Login (docs/adr/0008): no Page needed, but no Removal.
     key: "instagram-login",
     network: "instagram",
     name: "Instagram",
     connectLabel: "Connect Instagram directly",
-    channelSettings: { login: "instagram" },
-    channelNoun: "profile",
+    channelSettings: { login: "direct" },
+    channelNoun: "Instagram account",
     kind: "api",
     auth: instagramDirectAuth,
-    requiredEnv: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"],
+    requiredEnv: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET", "INSTAGRAM_LOGIN_CONFIG_ID"],
   },
   {
     network: "threads",

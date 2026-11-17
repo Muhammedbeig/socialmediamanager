@@ -3,13 +3,13 @@ import { type ContainerApi, publicUrl, publishThroughContainer } from "../meta/c
 import { type ContainerStatus, type Sleep, metaRequest, realSleep } from "../meta/http";
 import { type Capabilities, type ChannelAccess, type Connector, ConnectorError } from "../types";
 import { instagramAuth } from "./auth";
-import { INSTAGRAM_GRAPH, instagramLoginOf } from "./login";
+import { instagramLoginOf } from "./login";
 
-// Instagram Connector. A Channel connects one of two ways (docs/adr/0008):
-// - through Facebook Login (default): graph.facebook.com with the linked Page's token; can remove posts.
-// - directly with Instagram Login: graph.instagram.com with the profile's own token; cannot remove
-//   posts, so Removal only marks the Delivery removed and the Member deletes the post in Instagram.
-// The publishing endpoints are the same on both hosts.
+// Instagram Connector, on graph.facebook.com. A Channel connects one of two ways (docs/adr/0008):
+// - through Facebook (default): the linked Page's token, with instagram_manage_contents, so it can
+//   remove posts.
+// - directly with Unified Login: the business's system user token, which has no delete permission,
+//   so Removal only marks the Delivery removed and the Member deletes the post in Instagram.
 // Checked against Meta's content publishing, IG User media and Instagram Media docs on 2026-11-17.
 
 export const instagramCapabilities: Capabilities = {
@@ -42,24 +42,23 @@ export const instagramCapabilities: Capabilities = {
 };
 
 const MANUAL_REMOVAL_NOTE =
-  "This profile connected with Instagram login, and Instagram does not let apps remove those posts. " +
+  "This profile connected directly, and Instagram does not let the app remove those posts. " +
   "This only marks it removed here: delete the post yourself in the Instagram app.";
 
-/** Rules for a Channel connected directly with Instagram Login. */
+/** Rules for a Channel connected directly with Unified Login. */
 export const instagramDirectCapabilities: Capabilities = {
   ...instagramCapabilities,
   removal: { permanent: true, manual: true, note: MANUAL_REMOVAL_NOTE },
 };
 
-const graphOf = (access: ChannelAccess) =>
-  instagramLoginOf(access.settings) === "instagram" ? INSTAGRAM_GRAPH : FACEBOOK_GRAPH;
+const isDirect = (access: ChannelAccess) => instagramLoginOf(access.settings) === "direct";
 
 type PublishingLimit = { data?: { quota_usage?: number; config?: { quota_total?: number } }[] };
 
 export function createInstagramConnector(options: { sleep?: Sleep } = {}): Connector {
-  const apiFor = (graph: string): ContainerApi => ({
+  const api: ContainerApi = {
     network: "Instagram",
-    graph,
+    graph: FACEBOOK_GRAPH,
     createPath: "media",
     publishPath: "media_publish",
     single(input): Record<string, string> {
@@ -78,7 +77,7 @@ export function createInstagramConnector(options: { sleep?: Sleep } = {}): Conne
     },
     async readStatus(containerId, accessToken) {
       const answer = await metaRequest<{ status_code: ContainerStatus; status?: string }>(
-        `${graph}/${containerId}?fields=status_code,status`,
+        `${FACEBOOK_GRAPH}/${containerId}?fields=status_code,status`,
         { accessToken },
       );
       return { status: answer.status_code, message: answer.status };
@@ -86,7 +85,7 @@ export function createInstagramConnector(options: { sleep?: Sleep } = {}): Conne
     intervalMs: 10_000,
     maxWaitMs: 5 * 60_000,
     sleep: options.sleep ?? realSleep,
-  });
+  };
 
   return {
     network: "instagram",
@@ -94,14 +93,13 @@ export function createInstagramConnector(options: { sleep?: Sleep } = {}): Conne
     label: "Instagram profile",
     baseCapabilities: instagramCapabilities,
     async capabilities(access) {
-      return instagramLoginOf(access.settings) === "instagram" ? instagramDirectCapabilities : instagramCapabilities;
+      return isDirect(access) ? instagramDirectCapabilities : instagramCapabilities;
     },
     auth: instagramAuth,
     async publish(access, input) {
-      const graph = graphOf(access);
       // Instagram allows a set number of API posts per profile per day. Check before uploading.
       const limit = await metaRequest<PublishingLimit>(
-        `${graph}/${access.externalId}/content_publishing_limit?fields=quota_usage,config`,
+        `${FACEBOOK_GRAPH}/${access.externalId}/content_publishing_limit?fields=quota_usage,config`,
         { accessToken: access.accessToken },
       );
       const usage = limit.data?.[0]?.quota_usage;
@@ -112,11 +110,11 @@ export function createInstagramConnector(options: { sleep?: Sleep } = {}): Conne
           `This Instagram profile has used all ${total} API posts allowed in 24 hours. Retry later.`,
         );
       }
-      return publishThroughContainer(apiFor(graph), access, input);
+      return publishThroughContainer(api, access, input);
     },
     async remove(access, live) {
-      // Meta: deleting media "only supports Instagram API with Facebook login".
-      if (instagramLoginOf(access.settings) === "instagram") return { permanent: true, note: MANUAL_REMOVAL_NOTE };
+      // Deleting needs instagram_manage_contents, which Unified Login does not offer.
+      if (isDirect(access)) return { permanent: true, note: MANUAL_REMOVAL_NOTE };
       await metaRequest(`${FACEBOOK_GRAPH}/${live.externalPostId}`, { method: "DELETE", accessToken: access.accessToken });
       return { permanent: true, note: instagramCapabilities.removal.note };
     },

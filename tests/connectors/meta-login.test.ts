@@ -35,39 +35,50 @@ afterEach(() => vi.unstubAllGlobals());
 
 const REDIRECT = "https://localhost:3000/api/channels/callback/x";
 
-describe("Instagram login (connecting directly)", () => {
-  it("sends the Member to Instagram with the Instagram app ID and publishing permissions", () => {
-    const url = new URL(instagramDirectAuth.authorizeUrl({ redirectUri: REDIRECT, state: "abc" }));
-    expect(url.origin + url.pathname).toBe("https://www.instagram.com/oauth/authorize");
-    expect(url.searchParams.get("client_id")).toBe("instagram-app-id");
-    expect(url.searchParams.get("scope")).toBe("instagram_business_basic,instagram_business_content_publish");
+describe("Unified login (Instagram directly)", () => {
+  beforeEach(() => {
+    process.env.INSTAGRAM_LOGIN_CONFIG_ID = "config-1";
   });
 
-  it("trades the code for a 60-day token and makes one Channel target for the profile", async () => {
+  it("sends the Member to Facebook Login for Business with the configuration, not scopes", () => {
+    const url = new URL(instagramDirectAuth.authorizeUrl({ redirectUri: REDIRECT, state: "abc" }));
+    expect(url.origin + url.pathname).toBe("https://www.facebook.com/v27.0/dialog/oauth");
+    expect(url.searchParams.get("client_id")).toBe("facebook-app-id");
+    expect(url.searchParams.get("config_id")).toBe("config-1");
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("state")).toBe("abc");
+    expect(url.searchParams.has("scope")).toBe(false);
+  });
+
+  it("makes one Channel target per shared Instagram account, with the never-expiring business token", async () => {
     answers.push(
-      { body: { data: [{ access_token: "short", user_id: "123", permissions: "instagram_business_basic" }] } },
-      { body: { access_token: "long", token_type: "bearer", expires_in: 5_184_000 } },
-      { body: { data: [{ user_id: "17841400000", username: "acme", name: "Acme" }] } },
+      { body: { access_token: "system-user-token" } },
+      {
+        body: {
+          data: [{ id: "17841400000", username: "acme", name: "Acme" }],
+          paging: { next: "https://graph.facebook.com/v27.0/next-accounts" },
+        },
+      },
+      { body: { data: [{ id: "17841400001", username: "acme.outlet" }] } },
     );
 
-    const [target] = await instagramDirectAuth.exchangeCode({ code: "the-code#_", redirectUri: REDIRECT });
+    const targets = await instagramDirectAuth.exchangeCode({ code: "the-code", redirectUri: REDIRECT });
 
-    expect(calls[0].url.href).toBe("https://api.instagram.com/oauth/access_token");
-    expect(calls[0].body?.get("code")).toBe("the-code");
-    expect(calls[0].body?.get("client_secret")).toBe("instagram-app-secret");
-    expect(calls[1].url.searchParams.get("grant_type")).toBe("ig_exchange_token");
-    expect(calls[2].url.origin).toBe("https://graph.instagram.com");
-    expect(calls[2].bearer).toBe("long");
-    expect(target).toMatchObject({ externalId: "17841400000", displayName: "Acme", handle: "acme", accessToken: "long" });
-    expect(target.expiresAt).toBeInstanceOf(Date);
-  });
-
-  it("extends a token with ig_refresh_token", async () => {
-    answers.push({ body: { access_token: "longer", expires_in: 5_184_000 } });
-    const fresh = await instagramDirectAuth.refresh!("long");
-    expect(calls[0].url.pathname).toBe("/refresh_access_token");
-    expect(calls[0].url.searchParams.get("grant_type")).toBe("ig_refresh_token");
-    expect(fresh.accessToken).toBe("longer");
+    expect(calls[0].url.pathname).toBe("/v27.0/oauth/access_token");
+    expect(calls[0].url.searchParams.get("client_secret")).toBe("facebook-app-secret");
+    expect(calls[0].url.searchParams.get("code")).toBe("the-code");
+    expect(calls[1].url.pathname).toBe("/v27.0/me/assigned_instagram_accounts");
+    expect(calls[1].url.searchParams.get("access_token")).toBe("system-user-token");
+    expect(targets).toEqual([
+      { externalId: "17841400000", displayName: "Acme", handle: "acme", accessToken: "system-user-token", expiresAt: null },
+      {
+        externalId: "17841400001",
+        displayName: "acme.outlet",
+        handle: "acme.outlet",
+        accessToken: "system-user-token",
+        expiresAt: null,
+      },
+    ]);
   });
 });
 
