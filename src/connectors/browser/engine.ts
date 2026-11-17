@@ -264,12 +264,18 @@ export async function waitEnabled(locator: Locator, step: string, timeoutMs: num
 }
 
 /**
- * Replaces the text of a rich editor the way a person would: select all, then type. A menu or
- * tip left open over the editor (TikTok opens some) is closed first; if something still covers
- * it, the editor is focused directly instead of clicked.
+ * Replaces the text of a rich editor the way a person would: select all, then type. With
+ * `closeMenus`, a menu or tip left open over the editor (TikTok opens some) is closed with Escape
+ * first; never use it inside a panel that Escape would close (Pinterest's Edit Pin). If something
+ * still covers the editor, it is focused directly instead of clicked.
  */
-export async function replaceText(page: Page, editor: Locator, text: string): Promise<void> {
-  await page.keyboard.press("Escape").catch(() => {});
+export async function replaceText(
+  page: Page,
+  editor: Locator,
+  text: string,
+  options: { closeMenus?: boolean } = {},
+): Promise<void> {
+  if (options.closeMenus) await page.keyboard.press("Escape").catch(() => {});
   try {
     await editor.click({ timeout: 5000 });
   } catch {

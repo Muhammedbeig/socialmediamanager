@@ -106,7 +106,7 @@ export const tiktokConnector: Connector = {
           "caption box",
           5 * 60_000,
         );
-        await replaceText(page, caption, input.caption);
+        await replaceText(page, caption, input.caption, { closeMenus: true });
         // Close any hashtag or mention suggestions the typing opened.
         await page.keyboard.press("Escape").catch(() => {});
 

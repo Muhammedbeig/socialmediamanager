@@ -118,20 +118,24 @@ export const pinterestConnector: Connector = {
           "board picker",
         );
         await boardButton.click();
-        // The board picker's own search, never Pinterest's site search in the header (its
-        // placeholder is "Search for easy dinners, fashion, etc."). Without one, the list is read as is.
-        const boardSearch = page
+        // The board picker is the list with "Create board" at its foot. Its own search box is used,
+        // never Pinterest's site search or the Pin's title box. Without one, the list is read as is.
+        const picker = page
+          .locator("div")
+          .filter({ has: page.getByText(/^create board$/i) })
+          .filter({ has: page.locator("input") })
+          .last();
+        const boardSearch = picker
           .locator('input:not([name="searchBoxInput"]):not([data-test-id="search-box-input"])')
-          .filter({ visible: true })
-          .and(page.getByPlaceholder(/^\s*search\s*$/i).or(page.locator('[data-test-id*="board" i] input')));
+          .and(picker.getByPlaceholder(/search/i))
+          .first();
         if (
           await boardSearch
-            .first()
             .waitFor({ state: "visible", timeout: 5000 })
             .then(() => true)
             .catch(() => false)
         ) {
-          await boardSearch.first().fill(board);
+          await boardSearch.fill(board);
         }
         const option = page
           .locator('[data-test-id="board-row"], [role="option"], [role="button"]')
