@@ -14,8 +14,8 @@ import {
 } from "./engine";
 
 // TikTok, through TikTok Studio in the Channel's own Chrome window (the API keeps posts private
-// until TikTok's audit). Written against TikTok Studio as known in November 2026 and not yet run
-// against the live site: a changed page fails with a screenshot.
+// until TikTok's audit). Written against TikTok Studio as of November 2026; upload and caption
+// checked on the live site on 2026-11-17. A changed page fails with a screenshot.
 
 const TIKTOK = "https://www.tiktok.com";
 const STUDIO_UPLOAD = `${TIKTOK}/tiktokstudio/upload?from=webapp`;
@@ -28,6 +28,23 @@ export const tiktokSite: SiteChecks = {
     (await looksLikeChallenge(page)) ||
     (await anyVisible([page.locator('#captcha_container, [class*="captcha" i], [id*="captcha-verify" i]')])),
 };
+
+/**
+ * TikTok Studio opens one-time questions over the upload form, such as "Turn on automatic content
+ * checks?". They are answered with Cancel or Got it, which leaves the account's settings as they are.
+ */
+async function dismissPrompts(page: import("playwright").Page): Promise<void> {
+  const prompts = [
+    page.getByRole("dialog").filter({ hasText: /automatic content checks/i }).getByRole("button", { name: /^cancel$/i }),
+    page.getByRole("button", { name: /^got it$/i }),
+  ];
+  for (const button of prompts) {
+    if (await button.first().isVisible().catch(() => false)) {
+      await button.first().click().catch(() => {});
+      await page.waitForTimeout(500);
+    }
+  }
+}
 
 const PRIVACY: Record<string, RegExp> = {
   everyone: /^everyone$/i,
@@ -93,6 +110,7 @@ export const tiktokConnector: Connector = {
         // Close any hashtag or mention suggestions the typing opened.
         await page.keyboard.press("Escape").catch(() => {});
 
+        await dismissPrompts(page);
         const privacy = fieldValue(input.fields, tiktokCapabilities.fields![0]);
         if (privacy !== "everyone") {
           const current = await firstVisible([page.getByText(PRIVACY.everyone)], "Who can watch setting");
@@ -104,6 +122,7 @@ export const tiktokConnector: Connector = {
         await expectVisible(post, "Post button", 60_000);
         // The upload must finish before TikTok enables Post.
         await waitEnabled(post, "upload to TikTok", 30 * 60_000);
+        await dismissPrompts(page);
         await clearChallenges(page, context, tiktokSite, access.attention, { goToLogin: false });
         await post.first().click();
 
