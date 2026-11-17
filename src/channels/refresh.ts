@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, lte } from "drizzle-orm";
-import { getNetwork, networkName } from "@/connectors/registry";
+import { connectOptionFor, networkName } from "@/connectors/registry";
 import type { Db } from "@/db/client";
 import { channels } from "@/db/schema";
 import { type DesktopNotifier, raiseAlert } from "@/notify";
@@ -28,7 +28,7 @@ export async function refreshExpiringTokens(
   let refreshed = 0;
   let failed = 0;
   for (const channel of rows) {
-    const refresh = getNetwork(channel.network)?.auth?.refresh;
+    const refresh = connectOptionFor(channel)?.auth?.refresh;
     if (!refresh || !channel.tokenEncrypted) continue;
     try {
       const fresh = await refresh(await decryptToken(channel.tokenEncrypted));

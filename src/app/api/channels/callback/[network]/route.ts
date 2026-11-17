@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { CONNECT_COOKIE, appUrl, channelsRedirect } from "@/channels/http";
 import { completeConnect } from "@/channels/connect";
-import { getNetwork } from "@/connectors/registry";
+import { entryKey, getNetwork } from "@/connectors/registry";
 import { ConnectorError } from "@/connectors/types";
 import { getDb } from "@/db/client";
 
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ net
 
   const code = query.get("code");
   const state = query.get("state");
-  if (!code || !state || !pending.brandId || pending.state !== state || pending.network !== entry.network) {
+  if (!code || !state || !pending.brandId || pending.state !== state || pending.network !== entryKey(entry)) {
     return finish({ error: "That login could not be matched to a connect request. Try connecting again." });
   }
 

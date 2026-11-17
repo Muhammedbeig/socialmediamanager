@@ -176,6 +176,7 @@ export default async function PostDetailPage({
                   canEdit: delivery.canEdit,
                   editNote: delivery.editNote,
                   removalNote: delivery.removalNote,
+                  removalManual: delivery.removalManual,
                   captionRules: delivery.captionRules,
                 }}
               />

@@ -85,8 +85,27 @@ In the Instagram use case (API setup with Facebook login), add the permissions `
 `instagram_content_publish` and `instagram_manage_contents`. Nothing else: it uses the Facebook
 app ID and secret, and your role on the app is enough, so no tester invites are needed.
 
-When you click **Connect Instagram**, Facebook asks which Pages to share. Every shared Page with
-a linked Instagram profile becomes one Instagram Channel.
+When you click **Connect Instagram through Facebook**, Facebook asks which Pages to share. Every
+shared Page with a linked Instagram profile becomes one Instagram Channel.
+
+#### Instagram directly (optional, no Facebook Page)
+
+A professional Instagram profile that is not linked to a Page can connect with Instagram's own
+login instead (decision record 0008). Posting works the same, but **the app cannot remove these
+posts**: Meta allows deleting only through Facebook Login. Remove then only marks the Delivery
+removed and you delete the post in Instagram; Replace is not offered.
+
+1. In the Meta app's Instagram use case, open **API setup with Instagram login**. Add the
+   permissions `instagram_business_basic` and `instagram_business_content_publish`.
+2. Under **Set up Instagram business login > Business login settings**, add the redirect URL
+   `APP_URL/api/channels/callback/instagram-login`.
+3. Copy the **Instagram app ID** and **Instagram app secret** shown there into `INSTAGRAM_APP_ID` and
+   `INSTAGRAM_APP_SECRET`. They differ from the Facebook ones.
+4. Under **App roles > Roles > Add People > Instagram Tester**, add the profile, then accept the
+   invite in Instagram: Settings > Website permissions > Apps and websites > Tester invites.
+
+Then use **Connect Instagram directly**. Its login lasts 60 days and the app extends it on its
+own. A profile connected one way and later the other stays one Channel and switches over.
 
 ### Threads
 

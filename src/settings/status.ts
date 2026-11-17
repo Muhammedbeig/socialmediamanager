@@ -9,7 +9,7 @@ import { lastHeartbeat, workerRunning } from "./heartbeat";
 // The Settings screen's checklist: everything the app needs to publish, and what is missing.
 
 export type SetupItem = {
-  id: "database" | "worker" | "ffmpeg" | "chrome" | "meta" | "threads" | "linkedin" | "google" | "r2" | "address" | "startup";
+  id: "database" | "worker" | "ffmpeg" | "chrome" | "meta" | "instagram-login" | "threads" | "linkedin" | "google" | "r2" | "address" | "startup";
   name: string;
   ok: boolean;
   /** Not needed for every Post, such as Threads when no Threads Channel is wanted. */
@@ -56,6 +56,7 @@ export async function setupStatus(db: Db, now = new Date()): Promise<SetupItem[]
   const [heartbeat, ffmpeg] = await Promise.all([databaseOk ? lastHeartbeat(db) : null, ffmpegVersion()]);
   const metaMissing = missing(["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"]);
   const threadsMissing = missing(["THREADS_APP_ID", "THREADS_APP_SECRET"]);
+  const instagramMissing = missing(["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"]);
   const linkedinMissing = missing(["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"]);
   const googleMissing = missing(["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]);
   const r2Missing = missingR2Settings();
@@ -100,6 +101,16 @@ export async function setupStatus(db: Db, now = new Date()): Promise<SetupItem[]
         metaMissing.length === 0
           ? "The Meta app is set up. Connect Pages and Instagram profiles on the Channels screen."
           : `Add ${metaMissing.join(" and ")} to .env.local (docs/setup.md, step 3), then restart the app.`,
+    },
+    {
+      id: "instagram-login",
+      name: "Instagram directly (Instagram login)",
+      ok: instagramMissing.length === 0,
+      optional: true,
+      detail:
+        instagramMissing.length === 0
+          ? "Set up. Instagram profiles can connect without a Facebook Page; the app cannot remove their posts."
+          : `Optional, for Instagram profiles not linked to a Facebook Page. Add ${instagramMissing.join(" and ")} to .env.local (docs/setup.md, Instagram), then restart the app.`,
     },
     {
       id: "threads",

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { facebookAuth } from "@/connectors/facebook/auth";
 import { instagramAuth } from "@/connectors/instagram/auth";
+import { instagramDirectAuth } from "@/connectors/instagram/login";
 import { metaRequest } from "@/connectors/meta/http";
 import { threadsAuth } from "@/connectors/threads/auth";
 import { ConnectorError } from "@/connectors/types";
@@ -13,7 +14,7 @@ let answers: { status?: number; body: unknown }[];
 beforeEach(() => {
   calls = [];
   answers = [];
-  for (const name of ["FACEBOOK", "THREADS"]) {
+  for (const name of ["FACEBOOK", "THREADS", "INSTAGRAM"]) {
     process.env[`${name}_APP_ID`] = `${name.toLowerCase()}-app-id`;
     process.env[`${name}_APP_SECRET`] = `${name.toLowerCase()}-app-secret`;
   }
@@ -33,6 +34,42 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const REDIRECT = "https://localhost:3000/api/channels/callback/x";
+
+describe("Instagram login (connecting directly)", () => {
+  it("sends the Member to Instagram with the Instagram app ID and publishing permissions", () => {
+    const url = new URL(instagramDirectAuth.authorizeUrl({ redirectUri: REDIRECT, state: "abc" }));
+    expect(url.origin + url.pathname).toBe("https://www.instagram.com/oauth/authorize");
+    expect(url.searchParams.get("client_id")).toBe("instagram-app-id");
+    expect(url.searchParams.get("scope")).toBe("instagram_business_basic,instagram_business_content_publish");
+  });
+
+  it("trades the code for a 60-day token and makes one Channel target for the profile", async () => {
+    answers.push(
+      { body: { data: [{ access_token: "short", user_id: "123", permissions: "instagram_business_basic" }] } },
+      { body: { access_token: "long", token_type: "bearer", expires_in: 5_184_000 } },
+      { body: { data: [{ user_id: "17841400000", username: "acme", name: "Acme" }] } },
+    );
+
+    const [target] = await instagramDirectAuth.exchangeCode({ code: "the-code#_", redirectUri: REDIRECT });
+
+    expect(calls[0].url.href).toBe("https://api.instagram.com/oauth/access_token");
+    expect(calls[0].body?.get("code")).toBe("the-code");
+    expect(calls[0].body?.get("client_secret")).toBe("instagram-app-secret");
+    expect(calls[1].url.searchParams.get("grant_type")).toBe("ig_exchange_token");
+    expect(calls[2].url.origin).toBe("https://graph.instagram.com");
+    expect(calls[2].bearer).toBe("long");
+    expect(target).toMatchObject({ externalId: "17841400000", displayName: "Acme", handle: "acme", accessToken: "long" });
+    expect(target.expiresAt).toBeInstanceOf(Date);
+  });
+
+  it("extends a token with ig_refresh_token", async () => {
+    answers.push({ body: { access_token: "longer", expires_in: 5_184_000 } });
+    const fresh = await instagramDirectAuth.refresh!("long");
+    expect(calls[0].url.pathname).toBe("/refresh_access_token");
+    expect(calls[0].url.searchParams.get("grant_type")).toBe("ig_refresh_token");
+    expect(fresh.accessToken).toBe("longer");
+  });
+});
 
 describe("Facebook login", () => {
   it("sends the Member to Facebook asking for the Page permissions", () => {

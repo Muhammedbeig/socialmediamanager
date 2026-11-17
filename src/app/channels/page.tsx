@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { listBrandsWithChannels } from "@/brands/service";
 import { needsReconnect } from "@/channels/connect";
-import { listNetworks, missingEnv } from "@/connectors/registry";
+import type { Network } from "@/db/schema";
+import { connectLabel, connectOptionFor, entryKey, listNetworks, missingEnv } from "@/connectors/registry";
 import { getDb } from "@/db/client";
 import { ConfirmButton } from "@/ui/confirm-button";
 import { NetworkBadge } from "@/ui/network-badge";
@@ -26,6 +27,12 @@ import {
 } from "./actions";
 
 const dateFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+/** Reconnect the way the Channel connected first. */
+function reconnectKey(channel: { network: Network; settings: Record<string, unknown> }): string {
+  const option = connectOptionFor(channel);
+  return option ? entryKey(option) : channel.network;
+}
 
 /** Where a browser Channel's login stands, from its settings. */
 function browserLoginState(settings: Record<string, unknown>) {
@@ -92,21 +99,25 @@ export default async function ChannelsPage({
               </label>
               {apiNetworks.map((entry) => (
                 <button
-                  key={entry.network}
+                  key={entryKey(entry)}
                   type="submit"
-                  formAction={`/api/channels/connect/${entry.network}`}
+                  formAction={`/api/channels/connect/${entryKey(entry)}`}
                   disabled={missingEnv(entry).length > 0}
                   className={buttonClass.secondary}
                 >
-                  Connect {entry.name}
+                  {connectLabel(entry)}
                 </button>
               ))}
             </form>
+            <p className="mt-3 max-w-3xl text-sm leading-5 text-muted">
+              Instagram through Facebook needs the profile linked to one of your Facebook Pages, and can remove posts.
+              Instagram directly needs no Page, but the app cannot remove its posts: you delete them in Instagram.
+            </p>
             {notSetUp.length > 0 ? (
               <ul className="mt-4 flex flex-col gap-1 text-sm leading-5 text-muted">
                 {notSetUp.map((entry) => (
-                  <li key={entry.network}>
-                    {entry.name} is not set up yet: add{" "}
+                  <li key={entryKey(entry)}>
+                    {connectLabel(entry)} is not set up yet: add{" "}
                     <code className="font-mono text-xs text-foreground">{missingEnv(entry).join(", ")}</code> to
                     .env.local (steps in docs/setup.md), then restart the app.
                   </li>
@@ -183,6 +194,11 @@ export default async function ChannelsPage({
                                   : channel.tokenExpiresAt
                                     ? `Login lasts until ${dateFormat.format(channel.tokenExpiresAt)}`
                                     : "Login does not expire"}
+                                {channel.network === "instagram"
+                                  ? channel.settings.login === "instagram"
+                                    ? " · Connected directly: delete removed posts in Instagram yourself"
+                                    : " · Connected through Facebook"
+                                  : ""}
                               </p>
                               {browser && login.error ? <p className="mt-0.5 text-xs text-danger">Last login: {login.error}</p> : null}
                             </div>
@@ -235,7 +251,7 @@ export default async function ChannelsPage({
                                 </form>
                               ) : null}
                               {!browser && reconnect ? (
-                                <form method="get" action={`/api/channels/connect/${channel.network}`}>
+                                <form method="get" action={`/api/channels/connect/${reconnectKey(channel)}`}>
                                   <input type="hidden" name="brandId" value={brand.id} />
                                   <button type="submit" className={buttonClass.primary}>
                                     Reconnect

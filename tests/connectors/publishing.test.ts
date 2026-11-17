@@ -232,6 +232,33 @@ describe("Instagram Connector", () => {
   });
 });
 
+describe("Instagram Connector, connected directly with Instagram login", () => {
+  const instagram = createInstagramConnector({ sleep: noSleep });
+  const direct = { ...access("ig1"), settings: { login: "instagram" } };
+
+  it("publishes on graph.instagram.com", async () => {
+    answers.push(
+      { body: { data: [{ quota_usage: 0, config: { quota_total: 100 } }] } },
+      { body: { id: "container1" } },
+      { body: { status_code: "FINISHED" } },
+      { body: { id: "media1" } },
+      { body: {} },
+    );
+    await instagram.publish(direct, input({ format: "image", media: [hosted("https://x/1.jpg")] }));
+    expect(calls.every((c) => c.url.origin === "https://graph.instagram.com")).toBe(true);
+    expect(paths()).toContain("POST /v27.0/ig1/media_publish");
+  });
+
+  it("cannot remove: Removal only marks it removed and sends nothing to Instagram", async () => {
+    const rules = await instagram.capabilities(direct);
+    expect(rules.removal.manual).toBe(true);
+    expect((await instagram.capabilities(access("ig1"))).removal.manual).toBeUndefined();
+    const outcome = await instagram.remove(direct, { externalPostId: "media1", state: {} });
+    expect(calls).toHaveLength(0);
+    expect(outcome.note).toMatch(/delete the post yourself in the Instagram app/);
+  });
+});
+
 describe("Threads Connector", () => {
   const threads = createThreadsConnector({ sleep: noSleep });
 

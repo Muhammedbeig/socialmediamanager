@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { CONNECT_COOKIE, appUrl, channelsRedirect } from "@/channels/http";
 import { beginConnect } from "@/channels/connect";
-import { getNetwork, missingEnv } from "@/connectors/registry";
+import { entryKey, getNetwork, missingEnv } from "@/connectors/registry";
 
 // Starts connecting a Channel: remembers the Brand, then sends the Member to the network's login.
 export async function GET(request: NextRequest, context: { params: Promise<{ network: string }> }) {
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ net
 
   const { url, state } = beginConnect(entry, base);
   const response = NextResponse.redirect(url);
-  response.cookies.set(CONNECT_COOKIE, JSON.stringify({ state, network: entry.network, brandId }), {
+  response.cookies.set(CONNECT_COOKIE, JSON.stringify({ state, network: entryKey(entry), brandId }), {
     httpOnly: true,
     sameSite: "lax",
     secure: base.startsWith("https://"),

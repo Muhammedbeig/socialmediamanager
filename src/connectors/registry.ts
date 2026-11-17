@@ -2,6 +2,7 @@ import type { Network } from "@/db/schema";
 import { facebookConnector } from "./facebook";
 import { fakeConnector } from "./fake";
 import { instagramConnector } from "./instagram";
+import { instagramDirectAuth } from "./instagram/login";
 import { linkedinConnector } from "./linkedin";
 import { youtubeConnector } from "./youtube";
 import { pinterestConnector } from "./browser/pinterest";
@@ -14,7 +15,13 @@ import type { Capabilities, Connector, ConnectorAuth } from "./types";
 // and which Connector publishes to it.
 
 export type NetworkEntry = {
+  /** Names this way of connecting in URLs. Defaults to `network`; Instagram has two ways. */
+  key?: string;
   network: Network;
+  /** Button text, when not "Connect {name}". */
+  connectLabel?: string;
+  /** Saved in the settings of Channels this way connects, such as which login an Instagram Channel uses. */
+  channelSettings?: Record<string, unknown>;
   /** The network's name, such as "Instagram". */
   name: string;
   /** What one Channel on it is, such as "Page" or "profile". */
@@ -36,13 +43,27 @@ const ENTRIES: NetworkEntry[] = [
     requiredEnv: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
   },
   {
-    // Instagram connects through Facebook Login (docs/adr/0005).
+    // Instagram through Facebook Login (docs/adr/0005): the profile must be linked to a granted Page.
     network: "instagram",
     name: "Instagram",
-    channelNoun: "profile",
+    connectLabel: "Connect Instagram through Facebook",
+    channelSettings: { login: "facebook" },
+    channelNoun: "profile linked to a Page",
     kind: "api",
     auth: instagramConnector.auth,
     requiredEnv: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
+  },
+  {
+    // Instagram directly with Instagram Login (docs/adr/0008): no Page needed, but no Removal.
+    key: "instagram-login",
+    network: "instagram",
+    name: "Instagram",
+    connectLabel: "Connect Instagram directly",
+    channelSettings: { login: "instagram" },
+    channelNoun: "profile",
+    kind: "api",
+    auth: instagramDirectAuth,
+    requiredEnv: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"],
   },
   {
     network: "threads",
@@ -102,8 +123,37 @@ export function listNetworks(): NetworkEntry[] {
   return fakeEnabled() ? [...ENTRIES, FAKE_ENTRY] : ENTRIES;
 }
 
-export function getNetwork(network: string): NetworkEntry | undefined {
-  return listNetworks().find((entry) => entry.network === network);
+/** The key in this way of connecting's URLs. */
+export function entryKey(entry: NetworkEntry): string {
+  return entry.key ?? entry.network;
+}
+
+/** A way of connecting, by its key (usually the network, such as "facebook"). */
+export function getNetwork(key: string): NetworkEntry | undefined {
+  return listNetworks().find((entry) => entryKey(entry) === key);
+}
+
+/**
+ * The way a Channel was connected, for reconnecting it and refreshing its login: the entry of its
+ * network whose saved settings match the Channel's, else its network's first entry.
+ */
+export function connectOptionFor(channel: {
+  network: Network;
+  settings: Record<string, unknown>;
+}): NetworkEntry | undefined {
+  const options = listNetworks().filter((entry) => entry.network === channel.network);
+  return (
+    options.find(
+      (entry) =>
+        entry.channelSettings &&
+        Object.entries(entry.channelSettings).every(([name, value]) => channel.settings[name] === value),
+    ) ?? options[0]
+  );
+}
+
+/** The button text for a way of connecting. */
+export function connectLabel(entry: NetworkEntry): string {
+  return entry.connectLabel ?? `Connect ${entry.name}`;
 }
 
 /** A display name for any network, including ones whose Channels can no longer be connected. */

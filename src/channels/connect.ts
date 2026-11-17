@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import type { NetworkEntry } from "@/connectors/registry";
+import { type NetworkEntry, entryKey } from "@/connectors/registry";
 import type { Db } from "@/db/client";
 import { brands, channels } from "@/db/schema";
 import { encryptToken } from "@/secrets/tokens";
@@ -19,7 +19,7 @@ function authOf(entry: NetworkEntry) {
 
 export function beginConnect(entry: NetworkEntry, appUrl: string) {
   const state = randomBytes(24).toString("base64url");
-  const url = authOf(entry).authorizeUrl({ redirectUri: callbackUrl(appUrl, entry.network), state });
+  const url = authOf(entry).authorizeUrl({ redirectUri: callbackUrl(appUrl, entryKey(entry)), state });
   return { url, state };
 }
 
@@ -40,7 +40,7 @@ export async function completeConnect(
 
   const targets = await authOf(entry).exchangeCode({
     code: params.code,
-    redirectUri: callbackUrl(params.appUrl, entry.network),
+    redirectUri: callbackUrl(params.appUrl, entryKey(entry)),
   });
 
   const result: ConnectResult = { connected: [], reconnected: [] };
@@ -53,16 +53,20 @@ export async function completeConnect(
       handle: target.handle,
     };
     const [existing] = await db
-      .select({ id: channels.id })
+      .select({ id: channels.id, settings: channels.settings })
       .from(channels)
       .where(and(eq(channels.network, entry.network), eq(channels.externalId, target.externalId)));
 
     if (existing) {
-      await db.update(channels).set(token).where(eq(channels.id, existing.id));
+      // A profile reconnected the other way (such as Instagram directly instead of through
+      // Facebook) stays the same Channel and switches to that way.
+      const settings = { ...existing.settings, ...entry.channelSettings };
+      await db.update(channels).set({ ...token, settings }).where(eq(channels.id, existing.id));
       result.reconnected.push(target.displayName);
     } else {
       await db.insert(channels).values({
         ...token,
+        settings: { ...entry.channelSettings },
         brandId: brand.id,
         network: entry.network,
         connectorKind: entry.kind,
