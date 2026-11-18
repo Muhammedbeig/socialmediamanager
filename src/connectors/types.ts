@@ -19,6 +19,8 @@ export type ImageRules = {
 export type VideoRules = {
   mimeTypes: string[];
   maxBytes: number;
+  /** Smaller files are refused, such as LinkedIn's 75 KB floor. Only another file can fix it. */
+  minBytes?: number;
   minSeconds?: number;
   maxSeconds?: number;
   minAspect?: number;

@@ -32,7 +32,14 @@ export const linkedinPageCapabilities: Capabilities = {
   caption: { maxChars: 3000 },
   carousel: { min: 2, max: 20 },
   image: { mimeTypes: ["image/jpeg", "image/png", "image/gif"], convertTo: "image/jpeg", maxBytes: 8 * 1024 * 1024 },
-  video: { mimeTypes: ["video/mp4", "video/quicktime"], maxBytes: 5 * 1024 * 1024 * 1024, minSeconds: 3, maxSeconds: 15 * 60 },
+  // The upload refuses files under 75 KB ("Please choose a file which is larger than 75 Kb", seen 2026-11-18).
+  video: {
+    mimeTypes: ["video/mp4", "video/quicktime"],
+    maxBytes: 5 * 1024 * 1024 * 1024,
+    minBytes: 75 * 1024,
+    minSeconds: 3,
+    maxSeconds: 15 * 60,
+  },
   fetchesMediaFromPublicUrl: false,
   edit: { text: true, note: "LinkedIn lets a Page admin edit the text of a Page post." },
   removal: { permanent: true, note: "Removal from LinkedIn is permanent." },
@@ -58,25 +65,41 @@ async function frameShowing(page: Page, selector: string, step: string, timeoutM
   throw new PageChanged(step);
 }
 
-/** One post in the Page's admin list of published posts, by its URN. */
-async function postInList(page: Page, access: ChannelAccess, urn: string): Promise<{ frame: Frame; post: Locator }> {
+/**
+ * One post's card in the Page's admin list of published posts, by its URN. LinkedIn only draws
+ * the posts near the screen, so the list is scrolled until the post is there.
+ */
+async function postInList(page: Page, access: ChannelAccess, urn: string): Promise<{ frame: Frame; card: Locator }> {
   await page.goto(postsUrl(access), { waitUntil: "domcontentloaded" });
-  const selector = `[data-urn="${urn}"]`;
-  const frame = await frameShowing(page, selector, "the post in the Page's post list");
-  return { frame, post: frame.locator(selector).first() };
+  const frame = await frameShowing(page, '[data-urn^="urn:li:activity:"]', "the Page's post list");
+  const post = frame.locator(`[data-urn="${urn}"]`).first();
+  for (let step = 0; step < 40 && (await post.count()) === 0; step++) {
+    await frame.evaluate(() => window.scrollBy(0, 800)).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  if ((await post.count()) === 0) {
+    throw new ConnectorError("rejected", "The post is not in the Page's post list, so it may have been deleted on LinkedIn.", {
+      notFound: true,
+    });
+  }
+  await post.scrollIntoViewIfNeeded().catch(() => {});
+  // The admin card around the post holds the Page's own "..." menu (Edit post, Delete post).
+  const card = post.locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " artdeco-card ")][1]');
+  return { frame, card };
 }
 
-/** Opens a post's "..." menu and picks an item, such as "Delete post". */
-async function chooseFromPostMenu(frame: Frame, post: Locator, item: RegExp, step: string) {
+/** Opens a post's "..." menu on its admin card and picks an item, such as "Delete post". */
+async function chooseFromPostMenu(card: Locator, item: RegExp, step: string) {
   const menu = await firstVisible(
-    [
-      post.locator("button.feed-shared-control-menu__trigger"),
-      post.getByRole("button", { name: /control menu|more actions/i }),
-    ],
+    [card.locator("#org-update-actions-dropdown-trigger"), card.locator("button.feed-shared-control-menu__trigger")],
     "the post's ... menu",
   );
   await menu.click();
-  await (await expectVisible(frame.getByRole("menuitem", { name: item }).or(frame.getByText(item)), step)).click();
+  const choice = await firstVisible(
+    [card.locator(".artdeco-dropdown__item").filter({ hasText: item }), card.getByRole("menuitem", { name: item })],
+    step,
+  );
+  await choice.click();
 }
 
 const editorIn = (frame: Frame) => frame.locator(".share-box-v2__modal .ql-editor, [role=dialog] .ql-editor");
@@ -111,9 +134,10 @@ export const linkedinPageConnector: Connector = {
           });
           await fileInput.setInputFiles(input.media.map((media) => media.path));
           // Next turns on once LinkedIn has taken the files, then leads back to the post box.
+          // LinkedIn may refuse a file instead ("Something went wrong" with its reason).
           const next = frame.locator('.artdeco-modal button[aria-label="Next"]');
           await expectVisible(next, "Next after the upload", 60_000);
-          await waitEnabled(next, "media upload", 15 * 60_000);
+          await nextOrRefusal(frame, next);
           await next.first().click();
         }
 
@@ -156,8 +180,8 @@ export const linkedinPageConnector: Connector = {
       async (page, context) => {
         await page.goto(postsUrl(access), { waitUntil: "domcontentloaded" });
         await clearChallenges(page, context, linkedinPageSite, access.attention);
-        const { frame, post } = await postInList(page, access, live.externalPostId);
-        await chooseFromPostMenu(frame, post, /^edit post$/i, "Edit post in the post's menu");
+        const { frame, card } = await postInList(page, access, live.externalPostId);
+        await chooseFromPostMenu(card, /^\s*edit post\s*$/i, "Edit post in the post's menu");
         const editor = await expectVisible(editorIn(frame), "edit box");
         await replaceText(page, editor, text);
         const save = await firstVisible(
@@ -180,8 +204,8 @@ export const linkedinPageConnector: Connector = {
       async (page, context) => {
         await page.goto(postsUrl(access), { waitUntil: "domcontentloaded" });
         await clearChallenges(page, context, linkedinPageSite, access.attention);
-        const { frame, post } = await postInList(page, access, live.externalPostId);
-        await chooseFromPostMenu(frame, post, /^delete post$/i, "Delete post in the post's menu");
+        const { frame, card } = await postInList(page, access, live.externalPostId);
+        await chooseFromPostMenu(card, /^\s*delete post\s*$/i, "Delete post in the post's menu");
         const confirm = await firstVisible(
           [
             frame.locator(".artdeco-modal button.artdeco-button--primary").filter({ hasText: /^\s*delete\s*$/i }),
@@ -190,13 +214,33 @@ export const linkedinPageConnector: Connector = {
           "delete confirmation",
         );
         await confirm.click();
-        await post.waitFor({ state: "detached", timeout: 30_000 }).catch(() => {});
+        await card.waitFor({ state: "detached", timeout: 30_000 }).catch(() => {});
       },
       { screenshotName: access.screenshotName },
     );
     return { permanent: true, note: linkedinPageCapabilities.removal.note };
   },
 };
+
+/**
+ * Waits until Next can be pressed after an upload. If LinkedIn shows "Something went wrong"
+ * instead, the Delivery fails with LinkedIn's own reason; nothing was posted.
+ */
+async function nextOrRefusal(frame: Frame, next: Locator) {
+  const refusal = frame.locator(".artdeco-modal").filter({ hasText: /something went wrong/i });
+  const started = Date.now();
+  while (Date.now() - started < 15 * 60_000) {
+    if (await refusal.first().isVisible().catch(() => false)) {
+      const text = (await refusal.first().innerText().catch(() => "")).replace(/\s+/g, " ");
+      const reason = /something went wrong\s*(.*?)\s*(try again|back|next|$)/i.exec(text)?.[1]?.trim();
+      throw new ConnectorError("rejected", `LinkedIn refused the file${reason ? `: ${reason}` : "."}`);
+    }
+    const enabled = (await next.first().isEnabled().catch(() => false)) && (await next.first().getAttribute("aria-disabled").catch(() => null)) !== "true";
+    if (enabled) return;
+    await frame.page().waitForTimeout(1000);
+  }
+  throw new PageChanged("media upload");
+}
 
 /** The URN of the newest post in the Page's list whose text starts like `caption`. */
 async function findNewPost(page: Page, access: ChannelAccess, caption: string): Promise<string | undefined> {

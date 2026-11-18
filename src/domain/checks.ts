@@ -279,6 +279,13 @@ function checkVideo(item: DraftMedia, draft: Draft, capabilities: Capabilities, 
       message: `${network} does not take videos in this shape (${item.width}×${item.height}).`,
     });
   }
+  if (rules.minBytes !== undefined && item.sizeBytes < rules.minBytes) {
+    issues.push({
+      kind: "block",
+      assetId: item.assetId,
+      message: `${network} takes video files of at least ${Math.round(rules.minBytes / 1024)} KB; this one is ${Math.round(item.sizeBytes / 1024)} KB.`,
+    });
+  }
 
   if (!rules.mimeTypes.includes(item.mimeType)) {
     issues.push({ kind: "convert", assetId: item.assetId, message: `Will be converted to MP4 for ${network}.` });

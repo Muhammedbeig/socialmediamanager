@@ -143,6 +143,15 @@ describe("checkPost", () => {
     expect(check(draft({ media: [video({ width: 1920, height: 1080 })] }), caps)[0].kind).toBe("block");
   });
 
+  it("blocks a video file below the network's smallest size", () => {
+    const caps = { ...capabilities, video: { ...capabilities.video!, minBytes: 75 * 1024, maxBytes: 1024 * 1024 } };
+    const issues = check(draft({ media: [video({ sizeBytes: 33 * 1024 })] }), caps);
+    expect(issues).toEqual([
+      { kind: "block", assetId: "vid-1", message: "Testnet takes video files of at least 75 KB; this one is 33 KB." },
+    ]);
+    expect(check(draft({ media: [video({ sizeBytes: 80 * 1024 })] }), caps)).toEqual([]);
+  });
+
   it("asks for an approved trim when a video is too long, and never cuts silently", () => {
     const long = video({ durationMs: 90_000 });
     const issues = check(draft({ media: [long] }));

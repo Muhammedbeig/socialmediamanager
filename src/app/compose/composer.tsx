@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import type { Capabilities, FieldSpec } from "@/connectors/types";
 import type { CropRect, Network, TrimRange } from "@/db/schema";
 import { type DraftMedia, type Issue, canPublish, captionLength, checkPost, countChars } from "@/domain/checks";
+import { handleLabel } from "@/domain/handle";
 import { type ClientAsset, formatBytes, formatDuration, thumbUrl } from "@/media/client-asset";
 import { MediaDropzone } from "@/ui/media-dropzone";
 import { Notice, Panel, PanelHeading, buttonClass, inputClass, labelClass, textareaClass } from "@/ui/primitives";
@@ -340,7 +341,7 @@ export function Composer({
                       <span className="block truncate text-base font-medium">{channel.name}</span>
                       <span className="block text-xs text-muted">
                         {channel.networkName}
-                        {channel.handle ? ` · @${channel.handle}` : ""}
+                        {channel.handle ? ` · ${handleLabel(channel.network, channel.handle)}` : ""}
                         {unavailable ? ` · ${unavailable}` : ""}
                       </span>
                     </span>

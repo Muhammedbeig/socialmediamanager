@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listBrandsWithChannels } from "@/brands/service";
 import { getDb } from "@/db/client";
+import { handleLabel } from "@/domain/handle";
 import { ConfirmButton } from "@/ui/confirm-button";
 import { NetworkBadge } from "@/ui/network-badge";
 import { FlashMessages, PageHeader, Panel, PanelHeading, buttonClass, inputClass, labelClass } from "@/ui/primitives";
@@ -60,7 +61,9 @@ export default async function BrandsPage({
                       <li key={channel.id} className="flex items-center gap-3 px-4 py-2.5">
                         <NetworkBadge network={channel.network} />
                         <span className="min-w-0 truncate text-base">{channel.displayName}</span>
-                        {channel.handle ? <span className="text-sm text-muted">@{channel.handle}</span> : null}
+                        {channel.handle ? (
+                          <span className="text-sm text-muted">{handleLabel(channel.network, channel.handle)}</span>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

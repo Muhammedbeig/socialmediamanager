@@ -4,6 +4,7 @@ import { needsReconnect } from "@/channels/connect";
 import type { Network } from "@/db/schema";
 import { connectLabel, connectOptionFor, entryKey, listNetworks, missingEnv } from "@/connectors/registry";
 import { getDb } from "@/db/client";
+import { handleLabel } from "@/domain/handle";
 import { ConfirmButton } from "@/ui/confirm-button";
 import { NetworkBadge } from "@/ui/network-badge";
 import {
@@ -189,11 +190,7 @@ export default async function ChannelsPage({
                             <div className="min-w-40 flex-1">
                               <p className="truncate text-base font-medium">{channel.displayName}</p>
                               <p className="mt-0.5 text-xs text-muted">
-                                {channel.handle
-                                  ? channel.network === "linkedin_page"
-                                    ? `linkedin.com/company/${channel.handle} · `
-                                    : `@${channel.handle} · `
-                                  : ""}
+                                {channel.handle ? `${handleLabel(channel.network, channel.handle)} · ` : ""}
                                 {browser
                                   ? "Posts through its own Chrome window"
                                   : channel.tokenExpiresAt

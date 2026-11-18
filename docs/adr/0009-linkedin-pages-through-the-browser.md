@@ -26,9 +26,15 @@ Chrome window for the login, and posting windows driven by Playwright.
 
 ## Cost
 
-- LinkedIn draws the Page admin inside an embedded frame (seen 2026-11-18), so the script looks
-  for its steps in every frame of the page. A change on LinkedIn's side fails the Delivery as
-  "page changed" with a screenshot.
+- LinkedIn sometimes draws the Page admin inside an embedded frame and sometimes not (both seen
+  2026-11-18), so the script looks for its steps in every frame of the page. A change on
+  LinkedIn's side fails the Delivery as "page changed" with a screenshot.
+- The admin list only draws posts near the screen, so Edit and Removal scroll until the post is
+  there. Each post's "..." menu (Edit post, Delete post) sits on its admin card, outside the post.
+- Video files under 75 KB are refused by LinkedIn's upload; the composer blocks them, and a
+  refusal shown during upload fails the Delivery with LinkedIn's reason.
+- Proven against the real network on 2026-11-18 on the eBaig Page: text, photo and video
+  publish, Edit, and Removal.
 - A separate network means a Page and the admin's personal profile are separate Channels, each
   with its own login: the Page's Chrome profile must be logged in as one of its admins.
 - A public launch moves Pages to the Community Management API, like the other Browser Connectors.
