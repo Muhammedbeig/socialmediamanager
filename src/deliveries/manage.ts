@@ -221,6 +221,21 @@ async function removeOne(db: Db, deliveryId: string, options: { desktop?: Deskto
     await logEvent(db, deliveryId, "removed", { permanent: outcome.permanent });
     return report(true, note);
   } catch (error) {
+    if (error instanceof ConnectorError && error.notFound) {
+      // Deleted on the network already, such as by hand: there is nothing left to take down.
+      const note = `It was already gone from ${networkName(channel.network)}, so it is marked removed.`;
+      await db
+        .update(deliveries)
+        .set({
+          status: "removed",
+          removedAt: new Date(),
+          removalResult: { ok: true, permanent: true, note, at: new Date().toISOString() },
+          inFlightSince: null,
+        })
+        .where(eq(deliveries.id, deliveryId));
+      await logEvent(db, deliveryId, "removed", { permanent: true, alreadyGone: true });
+      return report(true, note);
+    }
     if (error instanceof ConnectorError && error.kind === "auth") {
       await db.update(channels).set({ status: "reconnect_needed" }).where(eq(channels.id, channel.id));
     }

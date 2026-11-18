@@ -61,7 +61,7 @@ class FakePosts {
 
 class FakeNetwork {
   posts = new FakePosts();
-  private failures: { on: "publish" | "edit" | "remove"; kind: ConnectorErrorKind; message: string }[] = [];
+  private failures: { on: "publish" | "edit" | "remove"; kind: ConnectorErrorKind; message: string; notFound?: boolean }[] = [];
   /** The Channels a fake login grants. */
   loginTargets = [{ externalId: "fake-1", displayName: "Fake profile", handle: "fake" }];
   /** Tokens handed out by refresh, and whether refresh should fail. */
@@ -69,15 +69,15 @@ class FakeNetwork {
   refreshFails = false;
 
   /** Make the next call of this type fail. Queue several for several failures in a row. */
-  failNext(on: "publish" | "edit" | "remove", kind: ConnectorErrorKind, message = "Scripted failure") {
-    this.failures.push({ on, kind, message });
+  failNext(on: "publish" | "edit" | "remove", kind: ConnectorErrorKind, message = "Scripted failure", notFound = false) {
+    this.failures.push({ on, kind, message, notFound });
   }
 
   takeFailure(on: "publish" | "edit" | "remove") {
     const index = this.failures.findIndex((f) => f.on === on);
     if (index === -1) return;
     const [failure] = this.failures.splice(index, 1);
-    throw new ConnectorError(failure.kind, failure.message);
+    throw new ConnectorError(failure.kind, failure.message, { notFound: failure.notFound });
   }
 
   reset() {

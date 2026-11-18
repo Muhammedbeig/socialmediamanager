@@ -172,12 +172,16 @@ export type ConnectorErrorKind =
   | "outcome_unknown";
 
 export class ConnectorError extends Error {
+  /** The network says the post (or other object) does not exist, for example because it was deleted there. */
+  readonly notFound: boolean;
+
   constructor(
     readonly kind: ConnectorErrorKind,
     message: string,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; notFound?: boolean },
   ) {
     super(message, options);
     this.name = "ConnectorError";
+    this.notFound = options?.notFound ?? false;
   }
 }

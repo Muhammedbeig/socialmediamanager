@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLinkedinConnector, LINKEDIN_VERSION, littleText } from "@/connectors/linkedin";
 import { type ConnectorError, type PreparedMedia, type PublishInput } from "@/connectors/types";
-import { youtubeCapabilities, youtubeConnector } from "@/connectors/youtube";
+import { youtubeCapabilities, youtubeConnector, youtubeLoginEnds } from "@/connectors/youtube";
 import { checkPost } from "@/domain/checks";
 
 // LinkedIn and YouTube against scripted answers. Nothing reaches a real network.
@@ -134,6 +134,12 @@ describe("LinkedIn Connector", () => {
     expect(calls[1].method).toBe("DELETE");
   });
 
+  it("says when the post was already deleted on LinkedIn", async () => {
+    answers.push({ status: 404, body: { message: "Not found", status: 404 } });
+    const error = (await linkedin.remove(access, { externalPostId: "urn:li:share:1", state: {} }).catch((e) => e)) as ConnectorError;
+    expect(error.notFound).toBe(true);
+  });
+
   it("asks a personal app for the member scopes and connects the profile", async () => {
     const url = new URL(linkedin.auth!.authorizeUrl({ redirectUri: "http://localhost:3000/cb", state: "s" }));
     expect(url.searchParams.get("scope")).toBe("openid profile w_member_social");
@@ -221,5 +227,20 @@ describe("YouTube Connector", () => {
     answers.push({ status: 400, body: { error: "invalid_grant", error_description: "Token has been expired or revoked." } });
     const error = (await youtubeConnector.remove(other, { externalPostId: "v1", state: {} }).catch((e) => e)) as ConnectorError;
     expect(error.kind).toBe("auth");
+  });
+
+  it("knows when the login ends: Google's answer, else 7 days while the Google app is in Testing", () => {
+    const now = new Date("2026-11-17T15:00:00Z");
+    const before = process.env.GOOGLE_APP_PUBLISHED;
+    try {
+      delete process.env.GOOGLE_APP_PUBLISHED;
+      expect(youtubeLoginEnds({ refresh_token_expires_in: 3600 }, now)).toEqual(new Date("2026-11-17T16:00:00Z"));
+      expect(youtubeLoginEnds({}, now)).toEqual(new Date("2026-11-24T15:00:00Z"));
+      process.env.GOOGLE_APP_PUBLISHED = "1";
+      expect(youtubeLoginEnds({}, now)).toBeNull();
+    } finally {
+      if (before === undefined) delete process.env.GOOGLE_APP_PUBLISHED;
+      else process.env.GOOGLE_APP_PUBLISHED = before;
+    }
   });
 });

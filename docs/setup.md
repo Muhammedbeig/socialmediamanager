@@ -150,9 +150,11 @@ Logins last 60 days; the Channels screen shows the date, and you reconnect when 
 4. Under **Clients**, create an OAuth client of type **Web application**, with the authorized
    redirect URI `APP_URL/api/channels/callback/youtube`. Copy its Client ID and Client secret
    into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-5. Google ends logins after 7 days while the app is in **Testing**. To keep YouTube connected,
-   under **Audience** click **Publish app**. You do not need Google's verification for your own
-   use: when you connect, Google warns that the app is unverified; choose **Advanced**, then go on.
+5. Leave the app in **Testing**: that is right for internal use. Google then ends each YouTube
+   login 7 days after you connect it. The app knows the end date, alerts you a day before, and
+   marks the Channel for reconnecting once it has ended; reconnecting takes a few seconds.
+   Publishing the Google app would stop the expiry, but Google asks for a public homepage and
+   privacy policy first. If you ever publish it, set `GOOGLE_APP_PUBLISHED=1` and reconnect.
 
 YouTube allows about 100 uploads a day per project.
 

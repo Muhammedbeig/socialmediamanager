@@ -62,3 +62,42 @@ describe("refreshExpiringTokens", () => {
     expect(await refreshExpiringTokens(db, days(4))).toEqual({ refreshed: 0, failed: 0 });
   });
 });
+
+describe("logins the app cannot extend", () => {
+  async function youtubeEnding(at: Date) {
+    const { channel } = await fakeChannel(db, "yt-1");
+    await db.update(channels).set({ network: "youtube", tokenExpiresAt: at }).where(eq(channels.id, channel.id));
+    return channel.id;
+  }
+  const hours = (n: number) => new Date(NOW.getTime() + n * 60 * 60_000);
+
+  it("stays quiet while the login has more than a day left", async () => {
+    await youtubeEnding(days(5));
+    await refreshExpiringTokens(db, NOW);
+    expect(await db.select().from(notifications)).toHaveLength(0);
+  });
+
+  it("reminds once a day before the end, then asks for a reconnect once it has ended", async () => {
+    const id = await youtubeEnding(hours(12));
+    await refreshExpiringTokens(db, NOW);
+    await refreshExpiringTokens(db, hours(1));
+    let alerts = await db.select().from(notifications);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].kind).toBe("channel_reconnect");
+    expect(alerts[0].title).toMatch(/soon$/);
+    expect((await read(id)).status).toBe("connected");
+
+    await refreshExpiringTokens(db, hours(13));
+    expect((await read(id)).status).toBe("reconnect_needed");
+    alerts = await db.select().from(notifications);
+    expect(alerts).toHaveLength(2);
+  });
+
+  it("reminds again after a reconnect gives the login a new end", async () => {
+    const id = await youtubeEnding(hours(12));
+    await refreshExpiringTokens(db, NOW);
+    await db.update(channels).set({ tokenExpiresAt: days(7) }).where(eq(channels.id, id));
+    await refreshExpiringTokens(db, days(6.5));
+    expect(await db.select().from(notifications)).toHaveLength(2);
+  });
+});

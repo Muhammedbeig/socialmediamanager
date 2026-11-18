@@ -87,6 +87,18 @@ describe("Removal", () => {
     expect(after.removalResult).toMatchObject({ ok: true, permanent: true });
   });
 
+  it("marks a Delivery removed when the network says it was already deleted there", async () => {
+    const { delivery } = await livePost();
+    fakeNetwork.failNext("remove", "rejected", "Not found (HTTP 404)", true);
+    const [report] = await removeDeliveries(db, [delivery.id]);
+    expect(report).toMatchObject({ ok: true });
+    expect(report.message).toMatch(/already gone/);
+    const after = await row(delivery.id);
+    expect(after.status).toBe("removed");
+    expect(after.removalResult).toMatchObject({ ok: true, permanent: true });
+    expect(await db.select().from(notifications)).toHaveLength(0);
+  });
+
   it("records a failed Removal on that Delivery only, keeps it live, and raises an alert", async () => {
     const { delivery } = await livePost();
     fakeNetwork.failNext("remove", "retryable", "Try later");

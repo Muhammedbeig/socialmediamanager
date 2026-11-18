@@ -231,6 +231,15 @@ describe("Meta error handling", () => {
     expect(error.message).toMatch(/temporarily blocked this as possibly spam.*\(code 368\)/);
   });
 
+  it("says when a post no longer exists, and only then", async () => {
+    answers.push(
+      { status: 400, body: { error: { message: "Object does not exist", code: 100, error_subcode: 33 } } },
+      { status: 400, body: { error: { message: "Invalid parameter", code: 100 } } },
+    );
+    expect((await failure(metaRequest("https://graph.facebook.com/v27.0/1_2", { method: "DELETE" }))).notFound).toBe(true);
+    expect((await failure(metaRequest("https://graph.facebook.com/v27.0/1_2", { method: "DELETE" }))).notFound).toBe(false);
+  });
+
   it("treats no answer as retryable, or outcome unknown when something may have been published", async () => {
     vi.stubGlobal("fetch", async () => {
       throw new TypeError("fetch failed");

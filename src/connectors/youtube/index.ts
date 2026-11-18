@@ -16,7 +16,20 @@ type StoredToken = { r: string };
 
 const accessCache = new Map<string, { token: string; until: number }>();
 
-type GoogleToken = { access_token: string; expires_in: number; refresh_token?: string };
+type GoogleToken = { access_token: string; expires_in: number; refresh_token?: string; refresh_token_expires_in?: number };
+
+/** Google ends refresh tokens after 7 days while its app is in Testing (fine for internal use). */
+export const TESTING_LOGIN_MS = 7 * 24 * 60 * 60_000;
+
+/**
+ * When this login stops working: what Google says, else 7 days while the Google app is in Testing
+ * (GOOGLE_APP_PUBLISHED not set), else never.
+ */
+export function youtubeLoginEnds(answer: Pick<GoogleToken, "refresh_token_expires_in">, now = new Date()): Date | null {
+  if (answer.refresh_token_expires_in) return new Date(now.getTime() + answer.refresh_token_expires_in * 1000);
+  if (process.env.GOOGLE_APP_PUBLISHED === "1") return null;
+  return new Date(now.getTime() + TESTING_LOGIN_MS);
+}
 
 async function googleToken(form: Record<string, string>): Promise<GoogleToken> {
   try {
@@ -70,13 +83,14 @@ const youtubeAuth: ConnectorAuth = {
       { headers: { Authorization: `Bearer ${answer.access_token}` } },
     );
     const stored = JSON.stringify({ r: answer.refresh_token } satisfies StoredToken);
+    const expiresAt = youtubeLoginEnds(answer);
     return (body.items ?? []).map(
       (item): ChannelTarget => ({
         externalId: item.id,
         displayName: item.snippet.title,
         handle: item.snippet.customUrl?.replace(/^@/, "") ?? null,
         accessToken: stored,
-        expiresAt: null,
+        expiresAt,
       }),
     );
   },

@@ -77,5 +77,5 @@ export async function apiRequest<T = unknown>(url: string | URL, options: ApiReq
   if (response.status === 401) kind = "auth";
   else if (reasons.some((reason) => reason && QUOTA_REASONS.has(reason))) kind = "rejected";
   else if (response.status === 429 || response.status >= 500) kind = "retryable";
-  throw new ConnectorError(kind, `${message} (HTTP ${response.status})`);
+  throw new ConnectorError(kind, `${message} (HTTP ${response.status})`, { notFound: response.status === 404 });
 }

@@ -100,7 +100,9 @@ export async function metaRequest<T>(url: string | URL, options: MetaRequestOpti
   ) {
     kind = "retryable";
   }
-  throw new ConnectorError(kind, code !== undefined ? `${message} (code ${code})` : message);
+  // Code 100 with subcode 33: the object does not exist, for example a post deleted on the network.
+  const notFound = code === 100 && errorBody.error?.error_subcode === 33;
+  throw new ConnectorError(kind, code !== undefined ? `${message} (code ${code})` : message, { notFound });
 }
 
 export function expiresAtFrom(expiresInSeconds: number | undefined, now = new Date()): Date | null {
