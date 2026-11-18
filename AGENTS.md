@@ -23,8 +23,8 @@ An internal marketing tool: compose a Post once, publish it to every selected Ch
 
 Each network is one Connector behind a shared interface: publish, edit text, remove, and declare its capabilities (formats, limits, what it can edit). The composer and Post detail read those capabilities; network rules live only in the Connector.
 
-- **API Connectors**: Facebook Pages, Instagram, Threads, LinkedIn, YouTube. Official APIs only.
-- **Browser Connectors**: TikTok, Pinterest, X, driven by Playwright in a headed Chromium with one persistent profile per Channel.
+- **API Connectors**: Facebook Pages, Instagram, Threads, LinkedIn (personal profiles), YouTube. Official APIs only.
+- **Browser Connectors**: TikTok, Pinterest, X and LinkedIn company Pages (`linkedin_page`, docs/adr/0009), driven by Playwright in a headed Chromium with one persistent profile per Channel.
 
 Platform limits change often. Before building or changing a Connector, check the network's official docs (links in the PRD's Sources section).
 

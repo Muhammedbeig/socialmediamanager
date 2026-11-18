@@ -26,6 +26,14 @@ function cleanHandle(raw: string): string | null {
   return handle.length > 0 ? handle.slice(0, 100) : null;
 }
 
+/** A LinkedIn Page's ID or vanity name, from its link (any page under /company/<it>/) or as typed. */
+export function linkedinPageId(raw: string): string | null {
+  const text = raw.trim();
+  const fromLink = /\/company\/([^/?#\s]+)/i.exec(text)?.[1];
+  const id = fromLink ?? (/^[\w-]+$/.test(text) ? text : null);
+  return id ? decodeURIComponent(id).slice(0, 100) : null;
+}
+
 export async function addBrowserChannel(
   db: Db,
   input: { brandId: string; network: string; displayName: string; handle: string },
@@ -36,6 +44,11 @@ export async function addBrowserChannel(
   if (!brand) throw new UserError("That Brand no longer exists.");
   const displayName = input.displayName.trim().replace(/\s+/g, " ").slice(0, 80);
   if (!displayName) throw new UserError("Give the account a name, such as Acme on TikTok.");
+  let handle = cleanHandle(input.handle);
+  if (entry.network === "linkedin_page") {
+    handle = linkedinPageId(input.handle);
+    if (!handle) throw new UserError("Paste the LinkedIn Page's link, such as linkedin.com/company/acme.");
+  }
 
   const [channel] = await db
     .insert(channels)
@@ -44,7 +57,7 @@ export async function addBrowserChannel(
       network: entry.network,
       connectorKind: "browser",
       displayName,
-      handle: cleanHandle(input.handle),
+      handle,
       externalId: `browser:${randomUUID()}`,
       status: "reconnect_needed",
       settings: { loginRequestedAt: new Date().toISOString() },

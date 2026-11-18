@@ -26,6 +26,8 @@ export const NETWORKS = [
   "tiktok",
   "pinterest",
   "x",
+  // LinkedIn company Pages through the Page admin screen (docs/adr/0009).
+  "linkedin_page",
   // Used by tests only; never offered in the Channels screen.
   "fake",
 ] as const;

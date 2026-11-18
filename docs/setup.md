@@ -134,9 +134,11 @@ later the other stays one Channel and switches over.
 3. On the **Auth** tab, add the redirect URL `APP_URL/api/channels/callback/linkedin`, then copy
    the **Client ID** and **Primary Client Secret** into `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`.
 
-This posts as your personal profile. Posting as a **company Page** needs the **Community
-Management API** product, which LinkedIn grants after a review and only on an app with no other
-products: create a second app for it, use its keys instead, and set `LINKEDIN_PAGES=1`.
+This posts as your personal profile. For a **company Page**, add a **LinkedIn Page** account
+instead (section 3d): it posts through the Page's admin screen in its own Chrome window and needs
+no keys (docs/adr/0009). The API route for Pages needs the **Community Management API** product,
+which LinkedIn grants only after a review and only on an app with no other products; with it, use
+that app's keys and set `LINKEDIN_PAGES=1`.
 
 Logins last 60 days; the Channels screen shows the date, and you reconnect when it runs out.
 
@@ -158,9 +160,12 @@ Logins last 60 days; the Channels screen shows the date, and you reconnect when 
 
 YouTube allows about 100 uploads a day per project.
 
-## 3d. TikTok, Pinterest and X
+## 3d. TikTok, Pinterest, X and LinkedIn Pages
 
-No keys. On the Channels screen, use **Add a TikTok, Pinterest or X account**. A Chrome window
+No keys. On the Channels screen, use **Add a TikTok, Pinterest, X or LinkedIn Page account**.
+For a LinkedIn Page, pick **LinkedIn Page** and paste the Page's link (such as
+`linkedin.com/company/acme`, or any of its admin pages) as the handle, then log in as one of the
+Page's admins. A Chrome window
 of its own opens at the network's login page: log in there once, then **close the window** (the
 publisher must be running). It is an ordinary Chrome window the app does not control, so "Sign in
 with Google" works there. That window's profile keeps the login for later Posts, separate from

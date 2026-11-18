@@ -127,10 +127,11 @@ export default async function ChannelsPage({
           </Panel>
 
           <Panel className="mb-8 p-4">
-            <PanelHeading>Add a TikTok, Pinterest or X account</PanelHeading>
+            <PanelHeading>Add a TikTok, Pinterest, X or LinkedIn Page account</PanelHeading>
             <p className="mt-1 max-w-3xl text-base text-muted">
               These post through their websites in a Chrome window of their own, separate from your Chrome. After you add
-              one, its window opens at the login page: log in there once. The publisher must be running.
+              one, its window opens at the login page: log in there once. The publisher must be running. For a LinkedIn
+              company Page, paste the Page&apos;s link as the handle and log in as one of its admins.
             </p>
             <form action={addBrowserChannelAction} className="mt-4 flex flex-wrap items-end gap-2">
               <label className={labelClass}>
@@ -158,8 +159,8 @@ export default async function ChannelsPage({
                 <input name="displayName" required maxLength={80} placeholder="Such as Acme on TikTok" className={`${inputClass} w-56`} />
               </label>
               <label className={labelClass}>
-                Handle
-                <input name="handle" maxLength={100} placeholder="@acme" className={`${inputClass} w-40`} />
+                Handle or Page link
+                <input name="handle" maxLength={200} placeholder="@acme" className={`${inputClass} w-56`} />
               </label>
               <button type="submit" className={buttonClass.primary}>
                 Add account
@@ -188,7 +189,11 @@ export default async function ChannelsPage({
                             <div className="min-w-40 flex-1">
                               <p className="truncate text-base font-medium">{channel.displayName}</p>
                               <p className="mt-0.5 text-xs text-muted">
-                                {channel.handle ? `@${channel.handle} · ` : ""}
+                                {channel.handle
+                                  ? channel.network === "linkedin_page"
+                                    ? `linkedin.com/company/${channel.handle} · `
+                                    : `@${channel.handle} · `
+                                  : ""}
                                 {browser
                                   ? "Posts through its own Chrome window"
                                   : channel.tokenExpiresAt

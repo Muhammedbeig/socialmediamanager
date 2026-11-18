@@ -8,6 +8,7 @@ import { youtubeConnector } from "./youtube";
 import { pinterestConnector } from "./browser/pinterest";
 import { tiktokConnector } from "./browser/tiktok";
 import { xConnector } from "./browser/x";
+import { linkedinPageConnector } from "./browser/linkedin-page";
 import { threadsConnector } from "./threads";
 import type { Capabilities, Connector, ConnectorAuth } from "./types";
 
@@ -93,6 +94,8 @@ const ENTRIES: NetworkEntry[] = [
   { network: "tiktok", name: "TikTok", channelNoun: "account", kind: "browser", requiredEnv: [] },
   { network: "pinterest", name: "Pinterest", channelNoun: "account", kind: "browser", requiredEnv: [] },
   { network: "x", name: "X", channelNoun: "account", kind: "browser", requiredEnv: [] },
+  // A company Page through its admin screen (docs/adr/0009); the API route needs LinkedIn's approval.
+  { network: "linkedin_page", name: "LinkedIn Page", channelNoun: "company Page", kind: "browser", requiredEnv: [] },
 ];
 
 const FAKE_ENTRY: NetworkEntry = {
@@ -113,6 +116,7 @@ const CONNECTORS: Partial<Record<Network, Connector>> = {
   tiktok: tiktokConnector,
   pinterest: pinterestConnector,
   x: xConnector,
+  linkedin_page: linkedinPageConnector,
 };
 
 function fakeEnabled(): boolean {

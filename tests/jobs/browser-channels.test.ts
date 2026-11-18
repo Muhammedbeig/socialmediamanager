@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { addBrowserChannel, requestLogin, setPremium, setShowWindow } from "@/channels/browser";
+import { addBrowserChannel, linkedinPageId, requestLogin, setPremium, setShowWindow } from "@/channels/browser";
 import { fakeConnector, fakeNetwork } from "@/connectors/fake";
 import { channelCapabilities } from "@/connectors/registry";
 import type { Connector } from "@/connectors/types";
@@ -176,6 +176,24 @@ describe("browser Channels", () => {
     const channel = await addBrowserChannel(db, { brandId: brand.id, network: "tiktok", displayName: " Acme  on TikTok ", handle: "@acme.shop" });
     expect(channel).toMatchObject({ network: "tiktok", connectorKind: "browser", displayName: "Acme on TikTok", handle: "acme.shop", status: "reconnect_needed" });
     expect(typeof channel.settings.loginRequestedAt).toBe("string");
+  });
+
+  it("adds a LinkedIn company Page from its link, and needs that link", async () => {
+    const { brand } = await setup([]);
+    const channel = await addBrowserChannel(db, {
+      brandId: brand.id,
+      network: "linkedin_page",
+      displayName: "eBaig",
+      handle: "https://www.linkedin.com/company/145452367/admin/dashboard/",
+    });
+    expect(channel).toMatchObject({ network: "linkedin_page", connectorKind: "browser", handle: "145452367" });
+    expect((await channelCapabilities(channel))!.formats).toEqual(["text", "image", "carousel", "video"]);
+    await expect(
+      addBrowserChannel(db, { brandId: brand.id, network: "linkedin_page", displayName: "No link", handle: "" }),
+    ).rejects.toThrow(/Page's link/);
+    expect(linkedinPageId("linkedin.com/company/acme-inc")).toBe("acme-inc");
+    expect(linkedinPageId("acme-inc")).toBe("acme-inc");
+    expect(linkedinPageId("https://www.linkedin.com/in/someone/")).toBeNull();
   });
 
   it("refuses API networks, which connect through their login", async () => {
